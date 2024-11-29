@@ -47,7 +47,7 @@ using ace_button::LadderButtonConfig;
 
 
 
-static const int LED_PIN = LED_BUILTIN;
+
 
 int my_hour = 0, my_min = 0, my_date = 0, my_month = 0, my_second = 0, my_year;
 // boolean sw_status[4] = {0};  // Array for switch statuses
@@ -58,13 +58,11 @@ int buzzer_pin = A1;
 int buzzer_status = 0;
 int beep_delay = 20;
 int default_alarm_hour = 19, default_alarm_min = 00;
-const int alarmPin = A2;  // The number of the pin for monitor alarm status on DS3231
+const int alarmPin = A3;  // The number of the pin for monitor alarm status on DS3231
 boolean alarm_status = 1;
 // LED states. On (most?) AVR processors, HIGH turns on the LED. But on other
 
 
-static const int LED_ON = HIGH;
-static const int LED_OFF = LOW;
 
 
 //-----------------------------------------------------------------------------
@@ -72,7 +70,7 @@ static const int LED_OFF = LOW;
 //-----------------------------------------------------------------------------
 
 // The ADC pin used by the resistor ladder. Change to A6 pin on actual hardware
-static const uint8_t BUTTON_PIN = A0;
+static const uint8_t BUTTON_PIN = A2;
 
 // Create 4 AceButton objects, with their corresonding virtual pin numbers 0 to
 // 3. Note that we could use an array of `AceButton BUTTONS[NUM_BUTTONS]`, and
@@ -135,10 +133,10 @@ void handleEvent(AceButton* button, uint8_t eventType, uint8_t buttonState) {
   // event is triggered and the LED remains off.
   switch (eventType) {
     case AceButton::kEventPressed:
-      digitalWrite(LED_PIN, LED_ON);
+      //digitalWrite(LED_PIN, LED_ON);
       break;
     case AceButton::kEventReleased:
-      digitalWrite(LED_PIN, LED_OFF);
+      //digitalWrite(LED_PIN, LED_OFF);
       break;
   }
 }
@@ -163,25 +161,24 @@ void checkButtons() {
 
 //-----------------------------------------------------------------------------
 
-void beep()
-{
+void beep() {
   digitalWrite(buzzer_pin, HIGH);
   delay(beep_delay);
   digitalWrite(buzzer_pin, LOW);
 }
 
 String int_to_string(int i1, int i2) {
-  char my_display[2];  // Enough space for "00:00\0"
+  char my_display[6];  // Enough space for "00:00\0"
 
-  // Format the integers into the character array
+  // Format the integers into the character array without the colon
   if (i1 < 10 && i2 < 10) {
-    sprintf(my_display, "0%d:0%d", i1, i2);
+    sprintf(my_display, "0%d0%d", i1, i2);  // Remove the colon
   } else if (i1 < 10 && i2 >= 10) {
-    sprintf(my_display, "0%d:%d", i1, i2);
+    sprintf(my_display, "0%d%d", i1, i2);  // Remove the colon
   } else if (i1 >= 10 && i2 < 10) {
-    sprintf(my_display, "%d:0%d", i1, i2);
+    sprintf(my_display, "%d0%d", i1, i2);  // Remove the colon
   } else {
-    sprintf(my_display, "%d:%d", i1, i2);
+    sprintf(my_display, "%d%d", i1, i2);  // Remove the colon
   }
 
   return String(my_display);  // Return as a String object
@@ -252,9 +249,23 @@ void displayCharacter(uint8_t position, char character, bool dot = false) {
   activateDigit(position);
 }
 // Display characters in a string
+// void loopDisplay(const char* charSetData, bool dot = false) {
+//   for (size_t i = 0; charSetData[i] != '\0'; i++) {
+//     displayCharacter(i, charSetData[i], dot);
+//     delay(1);
+//   }
+// }
 void loopDisplay(const char* charSetData, bool dot = false) {
-  for (size_t i = 0; charSetData[i] != '\0'; i++) {
-    displayCharacter(i, charSetData[i], dot);
+  size_t length = 0;
+
+  // First, calculate the length of the input string
+  while (charSetData[length] != '\0') {
+    length++;
+  }
+
+  // Iterate in reverse order
+  for (size_t i = length; i > 0; i--) {                         // Start from length and go to 1
+    displayCharacter(length - i + 1, charSetData[i - 1], dot);  // Access character in reverse order
     delay(1);
   }
 }
@@ -282,8 +293,8 @@ void setup() {
     abort();
   }
   // Initialize built-in LED as an output, and start with LED off.
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LED_OFF);
+  //pinMode(LED_PIN, OUTPUT);
+  //digitalWrite(LED_PIN, LED_OFF);
 
   // Don't use internal pull-up resistor because it will change the effective
   // resistance of the resistor ladder.
@@ -347,9 +358,7 @@ void loop() {
 
   // Use fixed-size character array instead of String
   char dispString[6];  // "A12:34\0" or "P12:34\0"
-  snprintf(dispString, sizeof(dispString), "%c%02d:%02d", apDigit[0], my_hour, my_min);
-  Serial.println(apDigit);
-  Serial.println(my_hour);
-  Serial.println(my_min);
+  snprintf(dispString, sizeof(dispString), "%c%02d%02d", apDigit[0], my_hour, my_min);
+  Serial.println(dispString);
   loopDisplay(dispString, true);
 }
