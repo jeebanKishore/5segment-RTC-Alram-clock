@@ -2,10 +2,34 @@
    A demo of LadderButtonConfig for buttons connected to a single pin
    using a resistor ladder.
 */
-
+/*
+  ===========================================================================
+   Using the alarm on a DS3231 with the Adafruit RTClib library and SQW pin
+  ===========================================================================
+  
+  Set an alarm on the DS3231 RTC module and monitor its status using the SQW
+  to pin. Example sets alarm to trigger in 10 seconds after boot and then
+  resets to a further 10 seconds after each trigger.
+  
+  Tested on a Arduino Nano. 3 July 2020.
+  
+  This example: https://github.com/garrysblog https://garrysblog.com/
+  Library: https://github.com/adafruit/RTClib
+  RTClib command info: https://adafruit.github.io/RTClib/html/class_r_t_c___d_s3231.html
+  
+  Connections
+  -----------
+  SDA -> Arduino Analog (SDA pin)
+  SCL -> Arduino Analog (SCL pin)
+  VCC -> Arduino 5V
+  GND -> Arduino GND
+  SQW -> Arduino D4
+*/
 #include <stdint.h>
 #include <Arduino.h>
 #include <AceButton.h>
+#include "RTClib.h"
+RTC_DS3231 rtc;
 using ace_button::AceButton;
 using ace_button::ButtonConfig;
 using ace_button::LadderButtonConfig;
@@ -14,6 +38,7 @@ using ace_button::LadderButtonConfig;
 // Configure built-in LED
 //-----------------------------------------------------------------------------
 
+const int alarmPin = 4;  // The number of the pin for monitor alarm status on DS3231
 
 static const int LED_PIN = LED_BUILTIN;
 
@@ -49,7 +74,11 @@ static AceButton b3(nullptr, 3);
 static AceButton b4(nullptr, 4);
 // button 4 cannot be used because it represents "no button pressed"
 static AceButton* const BUTTONS[NUM_BUTTONS] = {
-  &b0, &b1, &b2, &b3, &b4,
+  &b0,
+  &b1,
+  &b2,
+  &b3,
+  &b4,
 };
 
 // Define the ADC voltage levels for each button. In this example, we want 4
@@ -70,8 +99,7 @@ static const uint16_t LEVELS[NUM_LEVELS] = {
 // The LadderButtonConfig constructor binds the AceButton objects in the BUTTONS
 // array to the LadderButtonConfig.
 static LadderButtonConfig buttonConfig(
-  BUTTON_PIN, NUM_LEVELS, LEVELS, NUM_BUTTONS, BUTTONS
-);
+  BUTTON_PIN, NUM_LEVELS, LEVELS, NUM_BUTTONS, BUTTONS);
 
 // The event handler for the buttons.
 void handleEvent(AceButton* button, uint8_t eventType, uint8_t buttonState) {
@@ -110,7 +138,7 @@ void checkButtons() {
   // DO NOT USE delay(5) to do this.
   // The (uint16_t) cast is required on 32-bit processors, harmless on 8-bit.
   uint16_t now = millis();
-  if ((uint16_t) (now - prev) >= 5) {
+  if ((uint16_t)(now - prev) >= 5) {
     prev = now;
     buttonConfig.checkButtons();
   }
@@ -119,11 +147,16 @@ void checkButtons() {
 //-----------------------------------------------------------------------------
 
 void setup() {
-  delay(1000); // some microcontrollers reboot twice
   Serial.begin(115200);
-  while (! Serial); // Wait until Serial is ready - Leonardo/Micro
+  pinMode(alarmPin, INPUT_PULLUP);  // Set alarm pin as pullup
+  while (!Serial)
+    ;  // Wait until Serial is ready - Leonardo/Micro
   Serial.println(F("setup(): begin"));
-
+  if (!rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    Serial.flush();
+    abort();
+  }
   // Initialize built-in LED as an output, and start with LED off.
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LED_OFF);
@@ -139,10 +172,48 @@ void setup() {
   buttonConfig.setFeature(ButtonConfig::kFeatureDoubleClick);
   buttonConfig.setFeature(ButtonConfig::kFeatureLongPress);
   buttonConfig.setFeature(ButtonConfig::kFeatureRepeatPress);
+// If required set to to compile time
+  //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  // Or to an explicit date & time, e.g. July 3, 2020 at 8pm
+  //rtc.adjust(DateTime(2020, 7, 3, 20, 0, 0));
+
+  // Disable and clear both alarms
+  rtc.disableAlarm(1);
+  rtc.disableAlarm(2);
+  rtc.clearAlarm(1);
+  rtc.clearAlarm(2);
+
+  rtc.writeSqwPinMode(DS3231_OFF); // Place SQW pin into alarm interrupt mode
+              
+  DateTime now = rtc.now(); // Get current time
+
+  // Print current time and date
+  char buff[] = "Start time is hh:mm:ss DDD, DD MMM YYYY";
+  Serial.println(now.toString(buff));
+
+  // Set alarm time
+  rtc.setAlarm1(now + TimeSpan(0, 0, 0, 10), DS3231_A1_Second); // In 10 seconds time
+  //rtc.setAlarm1(DateTime(2020, 6, 25, 15, 0, 0), DS3231_A1_Hour); // Or can be set explicity
 
   Serial.println(F("setup(): ready"));
 }
 
 void loop() {
+  // Check if SQW pin shows alarm has fired
+  if (digitalRead(alarmPin) == LOW) {
+    // The alarm has just fired
+    
+    DateTime now = rtc.now(); // Get the current time
+    char buff[] = "Alarm triggered at hh:mm:ss DDD, DD MMM YYYY";
+    Serial.println(now.toString(buff));
+    
+    // Disable and clear alarm
+    rtc.disableAlarm(1);
+    rtc.clearAlarm(1);
+
+    // Perhaps reset to new time if required
+    rtc.setAlarm1(now + TimeSpan(0, 0, 0, 10), DS3231_A1_Second); // Set for another 10 seconds
+  }
   checkButtons();
+  
 }
