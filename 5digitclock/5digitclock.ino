@@ -163,6 +163,12 @@ void checkButtons() {
 
 //-----------------------------------------------------------------------------
 
+void beep()
+{
+  digitalWrite(buzzer_pin, HIGH);
+  delay(beep_delay);
+  digitalWrite(buzzer_pin, LOW);
+}
 
 String int_to_string(int i1, int i2) {
   char my_display[2];  // Enough space for "00:00\0"
@@ -220,9 +226,7 @@ uint8_t getSegmentPattern(char character) {
     case 'n': return 0b01010100;
     case 't': return 0b01111000;
     case 'd': return 0b01011110;
-    case 'E': return 0b01111001;
     case '-': return 0b01000000;
-    case 'u': return 0b00011100;
     default: return 0b00000000;  // Blank
   }
 }
