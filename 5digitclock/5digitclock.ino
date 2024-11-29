@@ -218,6 +218,11 @@ uint8_t getSegmentPattern(char character) {
     case 'E': return 0b01111001;
     case 'u': return 0b00011100;
     case 'n': return 0b01010100;
+    case 't': return 0b01111000;
+    case 'd': return 0b01011110;
+    case 'E': return 0b01111001;
+    case '-': return 0b01000000;
+    case 'u': return 0b00011100;
     default: return 0b00000000;  // Blank
   }
 }
