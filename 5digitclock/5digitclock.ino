@@ -352,13 +352,13 @@ void loop() {
   checkButtons();
   DateTime now = rtc.now();
   my_hour = now.hour();
-  const char* apDigit = (my_hour > 12) ? "P" : "A";
-  my_hour = (my_hour > 12) ? my_hour - 12 : my_hour;
   my_min = now.minute();
+  const char* apDigit = (my_hour > 12 && my_min > 0) ? "P" : "A";
+  my_hour = (my_hour > 12 && my_min > 0) ? my_hour - 12 : my_hour;
+
 
   // Use fixed-size character array instead of String
   char dispString[6];  // "A12:34\0" or "P12:34\0"
   snprintf(dispString, sizeof(dispString), "%c%02d%02d", apDigit[0], my_hour, my_min);
-  Serial.println(dispString);
   loopDisplay(dispString, true);
 }
