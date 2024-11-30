@@ -41,15 +41,7 @@ using ace_button::AceButton;
 using ace_button::ButtonConfig;
 using ace_button::LadderButtonConfig;
 
-//-----------------------------------------------------------------------------
-// Configure built-in LED
-//-----------------------------------------------------------------------------
-
-
-
-
-
-int my_date = 0, my_month = 0, my_second = 0, my_year;
+int my_second = 0;
 boolean sw1_status = 0, sw2_status = 0, sw3_status = 0, sw4_status = 0;
 int switch_status = 0;
 int delay_time = 3;
@@ -191,6 +183,7 @@ void clearAll() {
   PORTC &= ANODE_5_BIT;    // Clear anode for digit 5
 }
 
+
 // Get segment pattern for a character
 uint8_t getSegmentPattern(char character) {
   switch (character) {
@@ -215,6 +208,8 @@ uint8_t getSegmentPattern(char character) {
     case 'd': return 0b01011110;
     case '-': return 0b01000000;
     case 'L': return 0b00111000;
+    case 'I': return 0b00001110;
+    case 'o': return 0b01100011;
     default: return 0b00000000;  // Blank
   }
 }
@@ -256,6 +251,100 @@ void loopDisplay(const char* charSetData, bool dot = false) {
   clearAll();
 }
 
+
+void display_date() {
+  long t = 0;
+  DateTime now = rtc.now();
+  int my_date = now.day();
+  int my_month = now.month();
+  int my_year = now.year();  // Get the full 4-digit year
+
+  // Create a character array to hold the formatted date string
+  char dateString[6];  // Enough space for "dDDMM\0"
+
+  // Format the date as "dDDMM"
+  sprintf(dateString, "d%02d%02d", my_date, my_month);
+
+  // Display the date for 1.5 seconds
+  t = millis();
+  while ((millis() - t) <= 1500) {
+    loopDisplay(dateString, true);  // Send the formatted date string to display
+  }
+
+  // Create a character array for the year with prefix 'E'
+  char yearString[6];  // Enough space for "Eyyyy\0"
+
+  // Format the year as "Eyyyy"
+  sprintf(yearString, "E%04d", my_year);
+
+  // Display the year for 0.5 seconds
+  t = millis();
+  while ((millis() - t) <= 1000) {
+    loopDisplay(yearString, true);  // Send the formatted year string to display
+  }
+}
+
+void display_temperature() {
+  Serial.println("Display Temperature");
+  // Using integer representation for temperature
+  int16_t temperature = rtc.getTemperature() * 100;  // Store as whole number (multiplied by 100)
+  int16_t x1 = temperature / 100;                    // Integer part
+  int16_t x2 = temperature % 100;                    // Fractional part
+
+  Serial.println(temperature / 100.0);  // Print the actual temperature
+
+  // Create a character array to hold the formatted string
+  char dispString[6];  // Enough space for "txxxo\0"
+
+  // Format the string as "txxxo" where xxx is the temperature
+  sprintf(dispString, "t%03d", x1);  // Format the integer part, ensuring it's zero-padded to 3 digits
+  dispString[4] = 'o';               // Append 'o' at the end
+  dispString[5] = '\0';              // Null-terminate the string
+
+
+  long t = millis();
+  while ((millis() - t) <= 2000) {  // Display for 2 seconds
+    // Display the string
+    loopDisplay(dispString, true);  // Call the function to display the formatted string
+  }
+}
+
+void displayAlarm(int alarm) {
+    char alarmDateString[6]; // Enough space for "A1234\0" or "P1234\0"
+    DateTime alarmTime = (alarm == 1) ? rtc.getAlarm1() : rtc.getAlarm2(); // Get the stored alarm value
+    int my_hour = alarmTime.hour(); // Get the hour
+    int my_min = alarmTime.minute(); // Get the minute
+
+    // Determine AM/PM and adjust hour
+    char apDigit = (my_hour >= 12) ? 'P' : 'A'; // 'P' for PM, 'A' for AM
+    my_hour = (my_hour > 12) ? my_hour - 12 : my_hour; // Convert to 12-hour format
+
+    // Format the alarm time as "A1234" or "P1234"
+    snprintf(alarmDateString, sizeof(alarmDateString), "%c%02d%02d", apDigit, my_hour, my_min);
+
+    // Display the alarm time for 1.5 seconds
+    long startTime = millis(); // Declare and initialize the timer
+    while ((millis() - startTime) <= 1500) {
+        loopDisplay(alarmDateString, true); // Send the formatted string to the display
+        delay(100); // Add a small delay to reduce flickering on the display
+    }
+
+    // Optional: Uncomment the following lines to print the alarm details to Serial
+    // Ds3231Alarm1Mode alarmMode = (alarm == 1) ? rtc.getAlarm1Mode() : rtc.getAlarm2Mode();
+    // Serial.print(" [Alarm: ");
+    // Serial.print(alarmTime.timestamp()); // Assuming you have a method to get the timestamp as a string
+    // Serial.print(", Mode: ");
+    // switch (alarmMode) {
+    //     case DS3231_A1_PerSecond: Serial.print("PerSecond"); break;
+    //     case DS3231_A1_Second: Serial.print("Second"); break;
+    //     case DS3231_A1_Minute: Serial.print("Minute"); break;
+    //     case DS3231_A1_Hour: Serial.print("Hour"); break;
+    //     case DS3231_A1_Date: Serial.print("Date"); break;
+    //     case DS3231_A1_Day: Serial.print("Day"); break;
+    // }
+    // Serial.println("]");
+}
+
 void getTime() {
   DateTime now = rtc.now();
   int my_hour = now.hour();
@@ -282,8 +371,6 @@ void setup() {
   loopDisplay(charSetData);
   Serial.begin(115200);
   pinMode(alarmPin, INPUT_PULLUP);  // Set alarm pin as pullup
-  while (!Serial)
-    ;  // Wait until Serial is ready - Leonardo/Micro
   Serial.println(F("setup(): begin"));
   if (!rtc.begin()) {
     Serial.println("Couldn't find RTC");
@@ -302,9 +389,9 @@ void setup() {
   // level events.
   buttonConfig.setEventHandler(handleEvent);
   buttonConfig.setFeature(ButtonConfig::kFeatureClick);
-  buttonConfig.setFeature(ButtonConfig::kFeatureDoubleClick);
-  buttonConfig.setFeature(ButtonConfig::kFeatureLongPress);
-  buttonConfig.setFeature(ButtonConfig::kFeatureRepeatPress);
+  // buttonConfig.setFeature(ButtonConfig::kFeatureDoubleClick);
+  // buttonConfig.setFeature(ButtonConfig::kFeatureLongPress);
+  // buttonConfig.setFeature(ButtonConfig::kFeatureRepeatPress);
   // If required set to to compile time
   //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   // Or to an explicit date & time, e.g. July 3, 2020 at 8pm
@@ -337,9 +424,9 @@ void loop() {
     // The alarm has just fired
 
     DateTime now = rtc.now();  // Get the current time
-    char buff[] = "Alarm triggered at hh:mm:ss DDD, DD MMM YYYY";
-    Serial.println(now.toString(buff));
-
+                               // char buff[] = "Alarm triggered at hh:mm:ss DDD, DD MMM YYYY";
+                               // Serial.println(now.toString(buff));
+    beep();
     // Disable and clear alarm
     rtc.disableAlarm(1);
     rtc.clearAlarm(1);
