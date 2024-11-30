@@ -1,8 +1,4 @@
 /*
-   A demo of LadderButtonConfig for buttons connected to a single pin
-   using a resistor ladder.
-*/
-/*
   ===========================================================================
    Using the alarm on a DS3231 with the Adafruit RTClib library and SQW pin
   ===========================================================================
@@ -11,11 +7,6 @@
   to pin. Example sets alarm to trigger in 10 seconds after boot and then
   resets to a further 10 seconds after each trigger.
   
-  Tested on a Arduino Nano. 3 July 2020.
-  
-  This example: https://github.com/garrysblog https://garrysblog.com/
-  Library: https://github.com/adafruit/RTClib
-  RTClib command info: https://adafruit.github.io/RTClib/html/class_r_t_c___d_s3231.html
   
   Connections
   -----------
@@ -40,14 +31,15 @@ int dot_status = 0;
 using ace_button::AceButton;
 using ace_button::ButtonConfig;
 using ace_button::LadderButtonConfig;
-boolean alarm_status = 1;
+boolean isMenuActive = 0;
+boolean isSetTimeActive = 0;
 boolean sw1_status = 0, sw2_status = 0, sw3_status = 0, sw4_status = 0;
 int switch_status = 0;
 int delay_time = 3;
 int buzzer_pin = A1;
 int buzzer_status = 0;
 int beep_delay = 20;
-int default_alarm_hour = 19, default_alarm_min = 00;
+int default_alarm_hour = 00, default_alarm_min = 00;
 const int alarmPin = A3;  // The number of the pin for monitor alarm status on DS3231
 
 
@@ -115,37 +107,49 @@ void handleEvent(AceButton* button, uint8_t eventType, uint8_t buttonState) {
     case AceButton::kEventReleased:
       digitalWrite(buzzer_pin, LOW);
       break;
-    case AceButton::kEventClicked:
-      {
-        uint8_t pin = button->getPin();
-        Serial.println(pin);
+  }
+  if (AceButton::kEventClicked) {
+    uint8_t pin = button->getPin();
+    Serial.println(pin);
+    // Reset all switch statuses
+    switch_status = sw1_status = sw2_status = sw3_status = sw4_status = 0;
 
-        // Reset all switch statuses
-        switch_status = sw1_status = sw2_status = sw3_status = sw4_status = 0;
-
-        // Set the corresponding switch status based on the clicked button
-        switch (pin) {
-          case 1:
-            sw1_status = 1;
-            break;
-          case 2:
-            sw2_status = 1;
-            displayDate();
-            break;
-          case 3:
-            sw3_status = 1;
-            displayTemperature();
-            break;
-          case 4:
-            sw4_status = 1;
-            displayAlarm(1);
-            break;
-          default:
-            // No action needed if not button 1-4
-            break;
+    // Set the corresponding switch status based on the clicked button
+    switch (pin) {
+      case 1:
+        {
+          sw1_status = 1;
+          if (!isMenuActive) {
+            isMenuActive = 1;
+            menu(pin);
+          } else menu(pin);
+          break;
         }
+      case 2:
+        {
+          sw2_status = 1;
+          if (!isMenuActive) displayDate();
+          else menu(pin);
+          break;
+        }
+      case 3:
+        {
+          sw3_status = 1;
+          if (!isMenuActive) displayTemperature();
+          menu(pin);
+          break;
+        }
+      case 4:
+        {
+          sw4_status = 1;
+          if (!isMenuActive) displayAlarm(1);
+          menu(pin);
+          break;
+        }
+      default:
+        // No action needed if not button 1-4
         break;
-      }
+    }
   }
 }
 
@@ -166,7 +170,18 @@ void checkButtons() {
     prev = now;
     buttonConfig.checkButtons();
   }
-  getTime();
+  if (!isMenuActive) {
+    getTime();
+  }
+}
+
+void menu(int switchPin) {
+  Serial.println(switchPin);
+  Serial.println(switch_status);
+  Serial.println(sw1_status);
+  Serial.println(sw2_status);
+  Serial.println(sw3_status);
+  Serial.println(sw4_status);
 }
 
 //-----------------------------------------------------------------------------
@@ -215,6 +230,7 @@ uint8_t getSegmentPattern(char character) {
     case 'I': return 0b00001110;
     case 'o': return 0b01100011;
     case 'Y': return 0b01110010;
+    case 'H': return 0b01110110;
     default: return 0b00000000;  // Blank
   }
 }
@@ -287,11 +303,11 @@ void displayDate() {
   while ((millis() - t) <= 5000) {
     loopDisplay(yearString, true);  // Send the formatted year string to display
   }
-  getTime();
+  return;
 }
 
 void displayTemperature() {
-  char dispString[6]; // Enough space for "txxxx\0"
+  char dispString[6];  // Enough space for "txxxx\0"
 
   // Convert the temperature to an integer representation
   int tempInt = static_cast<int>(rtc.getTemperature() * 100);  // Convert to integer (e.g., 26.54 -> 2654)
@@ -305,7 +321,7 @@ void displayTemperature() {
     // Display the string
     loopDisplay(dispString, true);  // Call the function to display the formatted string
   }
-  getTime();
+  return;
 }
 
 void displayAlarm(int alarm) {
@@ -326,7 +342,7 @@ void displayAlarm(int alarm) {
   while ((millis() - startTime) <= 5000) {
     loopDisplay(alarmDateString, true);  // Send the formatted string to the display
   }
-  getTime();
+  return;
 }
 
 void getTime() {
