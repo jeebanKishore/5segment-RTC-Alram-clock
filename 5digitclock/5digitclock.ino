@@ -40,8 +40,7 @@ int dot_status = 0;
 using ace_button::AceButton;
 using ace_button::ButtonConfig;
 using ace_button::LadderButtonConfig;
-
-int my_second = 0;
+boolean alarm_status = 1;
 boolean sw1_status = 0, sw2_status = 0, sw3_status = 0, sw4_status = 0;
 int switch_status = 0;
 int delay_time = 3;
@@ -50,7 +49,7 @@ int buzzer_status = 0;
 int beep_delay = 20;
 int default_alarm_hour = 19, default_alarm_min = 00;
 const int alarmPin = A3;  // The number of the pin for monitor alarm status on DS3231
-boolean alarm_status = 1;
+
 
 
 
@@ -107,28 +106,49 @@ static LadderButtonConfig buttonConfig(
 
 // The event handler for the buttons.
 void handleEvent(AceButton* button, uint8_t eventType, uint8_t buttonState) {
-
-  // Print out a message for all events.
-  Serial.print(F("handleEvent(): "));
-  Serial.print(F("virtualPin: "));
-  Serial.print(button->getPin());
-  Serial.print(F("; eventType: "));
-  Serial.print(AceButton::eventName(eventType));
-  Serial.print(F("; buttonState: "));
-  Serial.println(buttonState);
-
-  // Control the LED only for the Pressed and Released events.
-  // Notice that if the MCU is rebooted while the button is pressed down, no
-  // event is triggered and the LED remains off.
+  // Control the Buzzer only for Pressed and Released events.
+  // If the MCU is rebooted while the button is pressed down, no event is triggered.
   switch (eventType) {
     case AceButton::kEventPressed:
-      //digitalWrite(LED_PIN, LED_ON);
+      digitalWrite(buzzer_pin, HIGH);
       break;
     case AceButton::kEventReleased:
-      //digitalWrite(LED_PIN, LED_OFF);
+      digitalWrite(buzzer_pin, LOW);
       break;
+    case AceButton::kEventClicked:
+      {
+        uint8_t pin = button->getPin();
+        Serial.println(pin);
+
+        // Reset all switch statuses
+        switch_status = sw1_status = sw2_status = sw3_status = sw4_status = 0;
+
+        // Set the corresponding switch status based on the clicked button
+        switch (pin) {
+          case 1:
+            sw1_status = 1;
+            break;
+          case 2:
+            sw2_status = 1;
+            displayDate();
+            break;
+          case 3:
+            sw3_status = 1;
+            displayTemperature();
+            break;
+          case 4:
+            sw4_status = 1;
+            displayAlarm(1);
+            break;
+          default:
+            // No action needed if not button 1-4
+            break;
+        }
+        break;
+      }
   }
 }
+
 
 // On most processors, this should be called every 4-5ms or faster, if the
 // default debouncing time is ~20ms. On a ESP8266, we must sample *no* faster
@@ -146,6 +166,7 @@ void checkButtons() {
     prev = now;
     buttonConfig.checkButtons();
   }
+  getTime();
 }
 
 //-----------------------------------------------------------------------------
@@ -155,23 +176,6 @@ void beep() {
   delay(beep_delay);
   digitalWrite(buzzer_pin, LOW);
 }
-
-// String int_to_string(int i1, int i2) {
-//   char my_display[6];  // Enough space for "00:00\0"
-
-//   // Format the integers into the character array without the colon
-//   if (i1 < 10 && i2 < 10) {
-//     sprintf(my_display, "0%d0%d", i1, i2);  // Remove the colon
-//   } else if (i1 < 10 && i2 >= 10) {
-//     sprintf(my_display, "0%d%d", i1, i2);  // Remove the colon
-//   } else if (i1 >= 10 && i2 < 10) {
-//     sprintf(my_display, "%d0%d", i1, i2);  // Remove the colon
-//   } else {
-//     sprintf(my_display, "%d%d", i1, i2);  // Remove the colon
-//   }
-
-//   return String(my_display);  // Return as a String object
-// }
 
 
 
@@ -210,6 +214,7 @@ uint8_t getSegmentPattern(char character) {
     case 'L': return 0b00111000;
     case 'I': return 0b00001110;
     case 'o': return 0b01100011;
+    case 'Y': return 0b01110010;
     default: return 0b00000000;  // Blank
   }
 }
@@ -252,7 +257,7 @@ void loopDisplay(const char* charSetData, bool dot = false) {
 }
 
 
-void display_date() {
+void displayDate() {
   long t = 0;
   DateTime now = rtc.now();
   int my_date = now.day();
@@ -265,84 +270,63 @@ void display_date() {
   // Format the date as "dDDMM"
   sprintf(dateString, "d%02d%02d", my_date, my_month);
 
-  // Display the date for 1.5 seconds
+  // Display the date for 5 seconds
   t = millis();
-  while ((millis() - t) <= 1500) {
+  while ((millis() - t) <= 5000) {
     loopDisplay(dateString, true);  // Send the formatted date string to display
   }
 
   // Create a character array for the year with prefix 'E'
   char yearString[6];  // Enough space for "Eyyyy\0"
 
-  // Format the year as "Eyyyy"
-  sprintf(yearString, "E%04d", my_year);
+  // Format the year as "Yyyyy"
+  sprintf(yearString, "Y%04d", my_year);
 
   // Display the year for 0.5 seconds
   t = millis();
-  while ((millis() - t) <= 1000) {
+  while ((millis() - t) <= 5000) {
     loopDisplay(yearString, true);  // Send the formatted year string to display
   }
+  getTime();
 }
 
-void display_temperature() {
-  Serial.println("Display Temperature");
-  // Using integer representation for temperature
-  int16_t temperature = rtc.getTemperature() * 100;  // Store as whole number (multiplied by 100)
-  int16_t x1 = temperature / 100;                    // Integer part
-  int16_t x2 = temperature % 100;                    // Fractional part
+void displayTemperature() {
+  char dispString[6]; // Enough space for "txxxx\0"
 
-  Serial.println(temperature / 100.0);  // Print the actual temperature
+  // Convert the temperature to an integer representation
+  int tempInt = static_cast<int>(rtc.getTemperature() * 100);  // Convert to integer (e.g., 26.54 -> 2654)
 
-  // Create a character array to hold the formatted string
-  char dispString[6];  // Enough space for "txxxo\0"
-
-  // Format the string as "txxxo" where xxx is the temperature
-  sprintf(dispString, "t%03d", x1);  // Format the integer part, ensuring it's zero-padded to 3 digits
-  dispString[4] = 'o';               // Append 'o' at the end
-  dispString[5] = '\0';              // Null-terminate the string
+  // Format the string as "txxxx" where xxxx is the temperature
+  sprintf(dispString, "t%04d", tempInt);
 
 
   long t = millis();
-  while ((millis() - t) <= 2000) {  // Display for 2 seconds
+  while ((millis() - t) <= 5000) {  // Display for 5 seconds
     // Display the string
     loopDisplay(dispString, true);  // Call the function to display the formatted string
   }
+  getTime();
 }
 
 void displayAlarm(int alarm) {
-    char alarmDateString[6]; // Enough space for "A1234\0" or "P1234\0"
-    DateTime alarmTime = (alarm == 1) ? rtc.getAlarm1() : rtc.getAlarm2(); // Get the stored alarm value
-    int my_hour = alarmTime.hour(); // Get the hour
-    int my_min = alarmTime.minute(); // Get the minute
+  char alarmDateString[6];                                                // Enough space for "A1234\0" or "P1234\0"
+  DateTime alarmTime = (alarm == 1) ? rtc.getAlarm1() : rtc.getAlarm2();  // Get the stored alarm value
+  int my_hour = alarmTime.hour();                                         // Get the hour
+  int my_min = alarmTime.minute();                                        // Get the minute
 
-    // Determine AM/PM and adjust hour
-    char apDigit = (my_hour >= 12) ? 'P' : 'A'; // 'P' for PM, 'A' for AM
-    my_hour = (my_hour > 12) ? my_hour - 12 : my_hour; // Convert to 12-hour format
+  // Determine AM/PM and adjust hour
+  char apDigit = (my_hour >= 12) ? 'P' : 'A';         // 'P' for PM, 'A' for AM
+  my_hour = (my_hour > 12) ? my_hour - 12 : my_hour;  // Convert to 12-hour format
 
-    // Format the alarm time as "A1234" or "P1234"
-    snprintf(alarmDateString, sizeof(alarmDateString), "%c%02d%02d", apDigit, my_hour, my_min);
+  // Format the alarm time as "A1234" or "P1234"
+  snprintf(alarmDateString, sizeof(alarmDateString), "%c%02d%02d", apDigit, my_hour, my_min);
 
-    // Display the alarm time for 1.5 seconds
-    long startTime = millis(); // Declare and initialize the timer
-    while ((millis() - startTime) <= 1500) {
-        loopDisplay(alarmDateString, true); // Send the formatted string to the display
-        delay(100); // Add a small delay to reduce flickering on the display
-    }
-
-    // Optional: Uncomment the following lines to print the alarm details to Serial
-    // Ds3231Alarm1Mode alarmMode = (alarm == 1) ? rtc.getAlarm1Mode() : rtc.getAlarm2Mode();
-    // Serial.print(" [Alarm: ");
-    // Serial.print(alarmTime.timestamp()); // Assuming you have a method to get the timestamp as a string
-    // Serial.print(", Mode: ");
-    // switch (alarmMode) {
-    //     case DS3231_A1_PerSecond: Serial.print("PerSecond"); break;
-    //     case DS3231_A1_Second: Serial.print("Second"); break;
-    //     case DS3231_A1_Minute: Serial.print("Minute"); break;
-    //     case DS3231_A1_Hour: Serial.print("Hour"); break;
-    //     case DS3231_A1_Date: Serial.print("Date"); break;
-    //     case DS3231_A1_Day: Serial.print("Day"); break;
-    // }
-    // Serial.println("]");
+  // Display the alarm time for 1.5 seconds
+  long startTime = millis();  // Declare and initialize the timer
+  while ((millis() - startTime) <= 5000) {
+    loopDisplay(alarmDateString, true);  // Send the formatted string to the display
+  }
+  getTime();
 }
 
 void getTime() {
@@ -356,7 +340,8 @@ void getTime() {
   snprintf(dispString, sizeof(dispString), "%c%02d%02d", apDigit[0], my_hour, my_min);
   loopDisplay(dispString, true);
 }
-//
+
+//--------------------------------------------------------------------------
 void setup() {
   // Configure PORTD (segments a-f) as output
   DDRD |= SEGMENT_MASK;
@@ -423,10 +408,8 @@ void loop() {
   if (digitalRead(alarmPin) == LOW) {
     // The alarm has just fired
 
-    DateTime now = rtc.now();  // Get the current time
-                               // char buff[] = "Alarm triggered at hh:mm:ss DDD, DD MMM YYYY";
-                               // Serial.println(now.toString(buff));
-    beep();
+    DateTime now = rtc.now();
+    //beep();
     // Disable and clear alarm
     rtc.disableAlarm(1);
     rtc.clearAlarm(1);
@@ -435,5 +418,5 @@ void loop() {
     rtc.setAlarm1(now + TimeSpan(0, 0, 0, 10), DS3231_A1_Second);  // Set for another 10 seconds
   }
   checkButtons();
-  getTime();
+  // getTime();
 }
