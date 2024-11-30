@@ -49,8 +49,7 @@ using ace_button::LadderButtonConfig;
 
 
 
-int my_hour = 0, my_min = 0, my_date = 0, my_month = 0, my_second = 0, my_year;
-// boolean sw_status[4] = {0};  // Array for switch statuses
+int my_date = 0, my_month = 0, my_second = 0, my_year;
 boolean sw1_status = 0, sw2_status = 0, sw3_status = 0, sw4_status = 0;
 int switch_status = 0;
 int delay_time = 3;
@@ -60,8 +59,6 @@ int beep_delay = 20;
 int default_alarm_hour = 19, default_alarm_min = 00;
 const int alarmPin = A3;  // The number of the pin for monitor alarm status on DS3231
 boolean alarm_status = 1;
-// LED states. On (most?) AVR processors, HIGH turns on the LED. But on other
-
 
 
 
@@ -167,32 +164,25 @@ void beep() {
   digitalWrite(buzzer_pin, LOW);
 }
 
-String int_to_string(int i1, int i2) {
-  char my_display[6];  // Enough space for "00:00\0"
+// String int_to_string(int i1, int i2) {
+//   char my_display[6];  // Enough space for "00:00\0"
 
-  // Format the integers into the character array without the colon
-  if (i1 < 10 && i2 < 10) {
-    sprintf(my_display, "0%d0%d", i1, i2);  // Remove the colon
-  } else if (i1 < 10 && i2 >= 10) {
-    sprintf(my_display, "0%d%d", i1, i2);  // Remove the colon
-  } else if (i1 >= 10 && i2 < 10) {
-    sprintf(my_display, "%d0%d", i1, i2);  // Remove the colon
-  } else {
-    sprintf(my_display, "%d%d", i1, i2);  // Remove the colon
-  }
+//   // Format the integers into the character array without the colon
+//   if (i1 < 10 && i2 < 10) {
+//     sprintf(my_display, "0%d0%d", i1, i2);  // Remove the colon
+//   } else if (i1 < 10 && i2 >= 10) {
+//     sprintf(my_display, "0%d%d", i1, i2);  // Remove the colon
+//   } else if (i1 >= 10 && i2 < 10) {
+//     sprintf(my_display, "%d0%d", i1, i2);  // Remove the colon
+//   } else {
+//     sprintf(my_display, "%d%d", i1, i2);  // Remove the colon
+//   }
 
-  return String(my_display);  // Return as a String object
-}
+//   return String(my_display);  // Return as a String object
+// }
 
 
-void get_time_date() {
-  DateTime now = rtc.now();
-  my_hour = now.hour();
-  my_min = now.minute();
-  my_date = now.day();
-  my_month = now.month();
-  my_second = now.second();
-}
+
 
 // Clear all segments and anodes
 void clearAll() {
@@ -224,6 +214,7 @@ uint8_t getSegmentPattern(char character) {
     case 't': return 0b01111000;
     case 'd': return 0b01011110;
     case '-': return 0b01000000;
+    case 'L': return 0b00111000;
     default: return 0b00000000;  // Blank
   }
 }
@@ -248,13 +239,7 @@ void displayCharacter(uint8_t position, char character, bool dot = false) {
   PORTB = dot ? (PORTB | DOT) : (PORTB & ~DOT);
   activateDigit(position);
 }
-// Display characters in a string
-// void loopDisplay(const char* charSetData, bool dot = false) {
-//   for (size_t i = 0; charSetData[i] != '\0'; i++) {
-//     displayCharacter(i, charSetData[i], dot);
-//     delay(1);
-//   }
-// }
+
 void loopDisplay(const char* charSetData, bool dot = false) {
   size_t length = 0;
 
@@ -268,6 +253,19 @@ void loopDisplay(const char* charSetData, bool dot = false) {
     displayCharacter(length - i + 1, charSetData[i - 1], dot);  // Access character in reverse order
     delay(1);
   }
+  clearAll();
+}
+
+void getTime() {
+  DateTime now = rtc.now();
+  int my_hour = now.hour();
+  int my_min = now.minute();
+  const char* apDigit = (my_hour > 12 && my_min > 0) ? "P" : "A";
+  my_hour = (my_hour > 12 && my_min > 0) ? my_hour - 12 : my_hour;
+  // Use fixed-size character array instead of String
+  char dispString[6];  // "A1234\0" or "P1234\0"
+  snprintf(dispString, sizeof(dispString), "%c%02d%02d", apDigit[0], my_hour, my_min);
+  loopDisplay(dispString, true);
 }
 //
 void setup() {
@@ -350,15 +348,5 @@ void loop() {
     rtc.setAlarm1(now + TimeSpan(0, 0, 0, 10), DS3231_A1_Second);  // Set for another 10 seconds
   }
   checkButtons();
-  DateTime now = rtc.now();
-  my_hour = now.hour();
-  my_min = now.minute();
-  const char* apDigit = (my_hour > 12 && my_min > 0) ? "P" : "A";
-  my_hour = (my_hour > 12 && my_min > 0) ? my_hour - 12 : my_hour;
-
-
-  // Use fixed-size character array instead of String
-  char dispString[6];  // "A12:34\0" or "P12:34\0"
-  snprintf(dispString, sizeof(dispString), "%c%02d%02d", apDigit[0], my_hour, my_min);
-  loopDisplay(dispString, true);
+  getTime();
 }
