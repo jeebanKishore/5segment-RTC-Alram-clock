@@ -256,21 +256,92 @@ void displayCharacter(uint8_t position, char character, bool dot = false) {
   activateDigit(position);
 }
 
+// void loopDisplay(const char* charSetData, bool dot = false) {
+//   size_t length = 0;
+
+//   // First, calculate the length of the input string
+//   while (charSetData[length] != '\0') {
+//     length++;
+//   }
+
+//   // Iterate in reverse order
+//   for (size_t i = length; i > 0; i--) {                         // Start from length and go to 1
+//     displayCharacter(length - i + 1, charSetData[i - 1], dot);  // Access character in reverse order
+//     delay(1);
+//   }
+//   clearAll();
+// }
+
+// void loopDisplay(const char* charSetData, bool dot = false) {
+//   static const char* currentCharSet = nullptr;  // Pointer to the current character array
+//   static size_t length = 0;                     // Length of the current array
+//   static size_t currentDigit = 0;               // Digit currently being displayed
+//   static unsigned long lastUpdate = 0;          // Timestamp of the last display update
+//   const unsigned long displayInterval = 1;      // Time in milliseconds for each digit
+
+//   // If a new character array is passed, update the display data
+//   if (charSetData != currentCharSet) {
+//     currentCharSet = charSetData;
+
+//     // Recalculate the length of the new character array
+//     length = 0;
+//     while (currentCharSet[length] != '\0') {
+//       length++;
+//     }
+
+//     // Reset display state
+//     currentDigit = 0;
+//   }
+
+//   // Update the display only if the interval has elapsed
+//   if (millis() - lastUpdate >= displayInterval) {
+//     lastUpdate = millis();
+
+//     // Clear the display and show the current digit
+//     clearAll();
+//     if (currentDigit < length) {
+//       displayCharacter(currentDigit + 1, currentCharSet[currentDigit], dot);
+//     }
+
+//     // Move to the next digit (wrap around to the first after the last)
+//     currentDigit = (currentDigit + 1) % length;
+//   }
+// }
+
+
 void loopDisplay(const char* charSetData, bool dot = false) {
-  size_t length = 0;
+    static const char* currentCharSet = nullptr;  // Pointer to the current character array
+    static size_t currentDigit = 0;              // Digit currently being displayed (reverse order)
+    static unsigned long lastUpdate = 0;         // Timestamp of the last display update
+    const unsigned long displayInterval = 1;  // Time in microseconds for each digit
+    const size_t fixedLength = 5;                // Length of the fixed part (excluding '\n')
 
-  // First, calculate the length of the input string
-  while (charSetData[length] != '\0') {
-    length++;
-  }
+    // Check for a new character array
+    if (charSetData != currentCharSet) {
+        currentCharSet = charSetData;
+        currentDigit = 0;  // Reset to the first digit in reverse order
+    }
 
-  // Iterate in reverse order
-  for (size_t i = length; i > 0; i--) {                         // Start from length and go to 1
-    displayCharacter(length - i + 1, charSetData[i - 1], dot);  // Access character in reverse order
-    delay(1);
-  }
-  clearAll();
+    // Update the display only if the interval has elapsed
+    if (micros() - lastUpdate >= displayInterval) {
+        lastUpdate = micros();
+
+        // Clear the display and show the current digit
+        clearAll();
+
+        // Display in reverse order: from the last digit to the first
+        if (currentDigit < fixedLength) {
+            size_t reverseIndex = fixedLength - currentDigit - 1;  // Correct reverse index calculation
+            char characterToDisplay = currentCharSet[reverseIndex];
+            displayCharacter(currentDigit + 1, characterToDisplay, dot);
+        }
+
+        // Move to the next digit (loop back after completing all)
+        currentDigit = (currentDigit + 1) % fixedLength;
+    }
 }
+
+
 
 
 void displayDate() {
