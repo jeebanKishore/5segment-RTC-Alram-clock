@@ -175,14 +175,7 @@ void checkButtons() {
   }
 }
 
-void menu(int switchPin) {
-  Serial.println(switchPin);
-  Serial.println(switch_status);
-  Serial.println(sw1_status);
-  Serial.println(sw2_status);
-  Serial.println(sw3_status);
-  Serial.println(sw4_status);
-}
+
 
 //-----------------------------------------------------------------------------
 
@@ -256,64 +249,12 @@ void displayCharacter(uint8_t position, char character, bool dot = false) {
   activateDigit(position);
 }
 
-// void loopDisplay(const char* charSetData, bool dot = false) {
-//   size_t length = 0;
-
-//   // First, calculate the length of the input string
-//   while (charSetData[length] != '\0') {
-//     length++;
-//   }
-
-//   // Iterate in reverse order
-//   for (size_t i = length; i > 0; i--) {                         // Start from length and go to 1
-//     displayCharacter(length - i + 1, charSetData[i - 1], dot);  // Access character in reverse order
-//     delay(1);
-//   }
-//   clearAll();
-// }
-
-// void loopDisplay(const char* charSetData, bool dot = false) {
-//   static const char* currentCharSet = nullptr;  // Pointer to the current character array
-//   static size_t length = 0;                     // Length of the current array
-//   static size_t currentDigit = 0;               // Digit currently being displayed
-//   static unsigned long lastUpdate = 0;          // Timestamp of the last display update
-//   const unsigned long displayInterval = 1;      // Time in milliseconds for each digit
-
-//   // If a new character array is passed, update the display data
-//   if (charSetData != currentCharSet) {
-//     currentCharSet = charSetData;
-
-//     // Recalculate the length of the new character array
-//     length = 0;
-//     while (currentCharSet[length] != '\0') {
-//       length++;
-//     }
-
-//     // Reset display state
-//     currentDigit = 0;
-//   }
-
-//   // Update the display only if the interval has elapsed
-//   if (millis() - lastUpdate >= displayInterval) {
-//     lastUpdate = millis();
-
-//     // Clear the display and show the current digit
-//     clearAll();
-//     if (currentDigit < length) {
-//       displayCharacter(currentDigit + 1, currentCharSet[currentDigit], dot);
-//     }
-
-//     // Move to the next digit (wrap around to the first after the last)
-//     currentDigit = (currentDigit + 1) % length;
-//   }
-// }
-
 
 void loopDisplay(const char* charSetData, bool dot = false) {
     static const char* currentCharSet = nullptr;  // Pointer to the current character array
     static size_t currentDigit = 0;              // Digit currently being displayed (reverse order)
     static unsigned long lastUpdate = 0;         // Timestamp of the last display update
-    const unsigned long displayInterval = 1;  // Time in microseconds for each digit
+    const unsigned long displayInterval = 1;  // Time in miliseconds for each digit
     const size_t fixedLength = 5;                // Length of the fixed part (excluding '\n')
 
     // Check for a new character array
@@ -323,8 +264,8 @@ void loopDisplay(const char* charSetData, bool dot = false) {
     }
 
     // Update the display only if the interval has elapsed
-    if (micros() - lastUpdate >= displayInterval) {
-        lastUpdate = micros();
+    if (millis() - lastUpdate >= displayInterval) {
+        lastUpdate = millis();
 
         // Clear the display and show the current digit
         clearAll();
@@ -342,7 +283,15 @@ void loopDisplay(const char* charSetData, bool dot = false) {
 }
 
 
-
+void menu(int switchPin) {
+  Serial.println(switchPin);
+  Serial.println(switch_status);
+  Serial.println(sw1_status);
+  Serial.println(sw2_status);
+  Serial.println(sw3_status);
+  Serial.println(sw4_status);
+  loopDisplay("A8888", true);
+}
 
 void displayDate() {
   long t = 0;
@@ -421,7 +370,12 @@ void getTime() {
   int my_hour = now.hour();
   int my_min = now.minute();
   const char* apDigit = (my_hour > 12 && my_min > 0) ? "P" : "A";
-  my_hour = (my_hour > 12 && my_min > 0) ? my_hour - 12 : my_hour;
+  // Convert 24-hour format to 12-hour format
+    if (my_hour == 0) {
+        my_hour = 12;  // Midnight is 12 AM
+    } else if (my_hour > 12) {
+        my_hour -= 12;  // Convert PM times
+    }
   // Use fixed-size character array instead of String
   char dispString[6];  // "A1234\0" or "P1234\0"
   snprintf(dispString, sizeof(dispString), "%c%02d%02d", apDigit[0], my_hour, my_min);
