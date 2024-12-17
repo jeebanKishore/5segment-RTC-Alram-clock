@@ -1,3 +1,5 @@
+#include <Wire.h>
+const byte MY_ADDRESS = 42;
 int dot_status = 0;
 // Pin Definitions
 #define SEGMENT_MASK 0b11111100  // Mask for segments a-f on PORTD (Pins 2-7)
@@ -5,6 +7,17 @@ int dot_status = 0;
 #define SEGMENT_G 0b00000001     // Segment g on PB0
 #define DOT 0b00000010           // DP on PB1
 #define ANODE_5_BIT 0b00000001   // Anode for digit 5 on PC0
+
+
+volatile char buf[8] = "888880";  // Buffer for received data, initialized
+
+// Called by interrupt service routine when incoming data arrives
+void receiveEvent(int howMany) {
+  for (int i = 0; i < howMany && i < 7; i++) {
+    buf[i] = Wire.read();
+  }
+  buf[7] = '\0';  // Ensure null-termination
+} // end of receiveEvent
 
 // Clear all segments and anodes
 void clearAll() {
@@ -42,7 +55,8 @@ uint8_t getSegmentPattern(char character) {
     case 'o': return 0b01100011;
     case 'Y': return 0b01110010;
     case 'H': return 0b01110110;
-    default: return 0b00000000;  // Blank
+    case '=': return 0b00000000;  // Blank
+    default: return 0b00000000;   // Blank
   }
 }
 
@@ -90,19 +104,35 @@ void setup() {
   DDRB |= ANODE_MASK | SEGMENT_G | DOT;
   // Configure PORTC (anode for digit 5) as output
   DDRC |= ANODE_5_BIT;
+  Wire.begin(MY_ADDRESS);
   // Clear all outputs
-
-  const char* charSetData = "88888";
+  Wire.onReceive(receiveEvent);
+  const char* charSetData = "888881";
   loopDisplay(charSetData);
-  Serial.begin(115200);
-  Serial.println(F("setup(): begin"));
+  //Serial.begin(115200);
+  //Serial.println(F("setup(): begin"));
 
 
   clearAll();
-  Serial.println(F("setup(): ready"));
+  //Serial.println(F("setup(): ready"));
 }
 
 void loop() {
-  const char* charSetData = "88888";
-  loopDisplay(charSetData);
+  char displayData[6] = {0};
+
+  // Copy the first 5 characters from the buffer
+  strncpy(displayData, (const char*)buf, 5);
+  displayData[5] = '\0';  // Ensure null-termination
+
+  // Determine dot status
+  dot_status = (buf[5] == '1');  // Check if the 6th character is '1'
+
+  // Debugging
+  // Serial.print(F("Display Data: "));
+  // Serial.println(displayData);
+  // Serial.print(F("Dot Status: "));
+  // Serial.println(dot_status);
+
+  // Display on the 7-segment
+  loopDisplay(displayData, dot_status);
 }
