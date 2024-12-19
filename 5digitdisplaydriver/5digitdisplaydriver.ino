@@ -3,6 +3,7 @@
 
 // Constants
 const byte MY_ADDRESS = 42;
+const int MAX_RETRIES = 3; // Maximum number of retry attempts for I2C communication
 
 // Pin Definitions
 #define SEGMENT_MASK 0b11111100 // Mask for segments a-f on PORTD (Pins 2-7)
@@ -70,11 +71,17 @@ private:
             case 'Y': return 0b01110010;
             case 'H': return 0b01110110;
             case '=': return 0b00000000; // Blank
-            default: return 0b00000000; // Blank
+            default:
+                Serial.println(F("Error: Invalid character for display"));
+                return 0b00000000; // Blank for unsupported characters
         }
     }
 
     void activateDigit(uint8_t position) {
+        if (position < 1 || position > 5) {
+            Serial.println(F("Error: Invalid digit position"));
+            return;
+        }
         PORTB |= ANODE_MASK;
         PORTC |= ANODE_5_BIT;
         if (position >= 1 && position <= 4) {
@@ -102,8 +109,27 @@ public:
     }
 
     static void receiveEvent(int howMany) {
-        for (int i = 0; i < howMany && i < 7; i++) {
-            buf[i] = Wire.read();
+        int attempts = 0;
+        bool success = false;
+        while (attempts < MAX_RETRIES && !success) {
+            if (howMany > 7) {
+                Serial.println(F("Error: Received more data than expected"));
+                return;
+            }
+            for (int i = 0; i < howMany && i < 7; i++) {
+                int data = Wire.read();
+                if (data == -1) {
+                    Serial.println(F("Error: I2C read failed, retrying..."));
+                    attempts++;
+                    delay(10); // Small delay before retrying
+                    break;
+                }
+                buf[i] = data;
+                success = true;
+            }
+        }
+        if (!success) {
+            Serial.println(F("Error: I2C communication failed after retries"));
         }
         buf[7] = '\0'; // Ensure null-termination
     }
@@ -113,6 +139,7 @@ SevenSegmentDisplay display;
 I2CReceiver i2cReceiver;
 
 void setup() {
+    Serial.begin(9600); // Initialize serial communication for debugging
     display.setup();
     i2cReceiver.setup();
 }
