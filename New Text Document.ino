@@ -41,9 +41,9 @@ public:
     }
 
     // Begin transmission to the display.
-    Wire.beginTransmission(displayAddress);
-    Wire.write(data);             // Send the data.
-    Wire.endTransmission();       // End transmission.
+    // Wire.beginTransmission(displayAddress);
+    // Wire.write(data);             // Send the data.
+    // Wire.endTransmission();       // End transmission.
     Serial.print("Data sent: ");  // Log sent data.
     Serial.println(data);
   }
@@ -564,10 +564,28 @@ void setup() {
 
   // Attach interrupt for switch 2 to beep on falling edge.
   attachInterrupt(digitalPinToInterrupt(2), beepHandler, FALLING);
+  Wire.begin();          // Start I2C communication.
+  Serial.begin(115200);  // Start serial communication at 115200 baud rate.
+
+  // Check if the RTC is connected.
+  if (!rtc.begin()) {
+    Serial.println("Couldn't find RTC");  // Error message if RTC not found.
+    Serial.flush();                       // Ensure all serial data is sent.
+    abort();                              // Stop the execution if RTC is not found.
+  }
+
+  // Disable and clear alarms and set SQW pin mode.
+  rtc.disableAlarm(1);
+  rtc.disableAlarm(2);
+  rtc.clearAlarm(1);
+  rtc.clearAlarm(2);
+  rtc.writeSqwPinMode(DS3231_OFF);               // Disable square wave output.
+  Serial.println(F("RTC Display Initialized"));  // Initialization message.
 }
 
 // Arduino loop function which runs repeatedly after setup.
 void loop() {
+  Serial.print("Data sent: ");
   SwitchHandler.readSwitchStatus();  // Read the status of all switches.
   RTCDisplay.getTime();              // Get and display the current time.
   // If any switch is active, display the menu.
