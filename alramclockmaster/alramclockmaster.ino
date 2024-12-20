@@ -9,6 +9,11 @@ const int buzzerPin = 13;          // Pin number for the buzzer.
 boolean isAlarmActive = false;     // Flag to check if the alarm is active.
 boolean sw1_status = 0, sw2_status = 0, sw3_status = 0, sw4_status = 0, sw5_status = 0;
 
+// Debounce variables
+const int debounceDelay = 50; // Debounce delay in milliseconds
+unsigned long lastDebounceTime[5] = {0, 0, 0, 0, 0}; // Last debounce time for each switch
+boolean lastSwitchState[5] = {LOW, LOW, LOW, LOW, LOW}; // Last stable state for each switch
+
 // Function to send data via I2C
 void sendDataViaI2C(const char *data) {
     if (strlen(data) != 6) {
@@ -350,13 +355,34 @@ int setAlarm() {
     return 0;
 }
 
-// Function to read the status of each switch
+// Function to read the status of each switch with debouncing
 boolean readSwitchStatus() {
-    sw5_status = FastGPIO::Pin<3>::isInputHigh() == HIGH;
-    sw1_status = FastGPIO::Pin<4>::isInputHigh() == HIGH;
-    sw2_status = FastGPIO::Pin<5>::isInputHigh() == HIGH;
-    sw3_status = FastGPIO::Pin<6>::isInputHigh() == HIGH;
-    sw4_status = FastGPIO::Pin<7>::isInputHigh() == HIGH;
+    boolean currentSwitchState[5] = {
+        FastGPIO::Pin<3>::isInputHigh(),
+        FastGPIO::Pin<4>::isInputHigh(),
+        FastGPIO::Pin<5>::isInputHigh(),
+        FastGPIO::Pin<6>::isInputHigh(),
+        FastGPIO::Pin<7>::isInputHigh()
+    };
+
+    for (int i = 0; i < 5; i++) {
+        if (currentSwitchState[i] != lastSwitchState[i]) {
+            lastDebounceTime[i] = millis();
+        }
+
+        if ((millis() - lastDebounceTime[i]) > debounceDelay) {
+            if (currentSwitchState[i] != (i == 0 ? sw5_status : (i == 1 ? sw1_status : (i == 2 ? sw2_status : (i == 3 ? sw3_status : sw4_status))))) {
+                if (i == 0) sw5_status = currentSwitchState[i];
+                else if (i == 1) sw1_status = currentSwitchState[i];
+                else if (i == 2) sw2_status = currentSwitchState[i];
+                else if (i == 3) sw3_status = currentSwitchState[i];
+                else if (i == 4) sw4_status = currentSwitchState[i];
+            }
+        }
+
+        lastSwitchState[i] = currentSwitchState[i];
+    }
+
     return (sw1_status || sw2_status || sw3_status || sw4_status || sw5_status);
 }
 
