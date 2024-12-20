@@ -10,6 +10,25 @@ boolean isAlarmActive = false;     // Flag to check if the alarm is active.
 boolean sw1_status = 0, sw2_status = 0, sw3_status = 0, sw4_status = 0, sw5_status = 0;
 
 
+
+// Activate the buzzer for an alarm.
+  void beep(bool continuous = false, int beepDelay = 20) {
+    if (continuous) {
+      // Continuous beeping: beep twice a second.
+      while (isAlarmActive) {           // Use a flag to check if the alarm should continue beeping.
+        digitalWrite(buzzerPin, HIGH);  // Turn on the buzzer.
+        delay(beepDelay);               // Wait for beep duration.
+        digitalWrite(buzzerPin, LOW);   // Turn off the buzzer.
+        delay(beepDelay);               // Wait for the interval before the next beep (to achieve twice a second).
+      }
+    } else {
+      // Short beep: single beep.
+      digitalWrite(buzzerPin, HIGH);  // Turn on the buzzer.
+      delay(beepDelay);               // Wait for beep duration.
+      digitalWrite(buzzerPin, LOW);   // Turn off the buzzer.
+    }
+  }
+  
 // Display the main menu.
   void displayMenu() {
     Serial.println("Entered menu");  // Log the entry into the menu.
@@ -412,23 +431,7 @@ boolean sw1_status = 0, sw2_status = 0, sw3_status = 0, sw4_status = 0, sw5_stat
     }
   }
 
-  // Activate the buzzer for an alarm.
-  void beep(bool continuous = false, int beepDelay = 20) {
-    if (continuous) {
-      // Continuous beeping: beep twice a second.
-      while (isAlarmActive) {           // Use a flag to check if the alarm should continue beeping.
-        digitalWrite(buzzerPin, HIGH);  // Turn on the buzzer.
-        delay(beepDelay);               // Wait for beep duration.
-        digitalWrite(buzzerPin, LOW);   // Turn off the buzzer.
-        delay(beepDelay);               // Wait for the interval before the next beep (to achieve twice a second).
-      }
-    } else {
-      // Short beep: single beep.
-      digitalWrite(buzzerPin, HIGH);  // Turn on the buzzer.
-      delay(beepDelay);               // Wait for beep duration.
-      digitalWrite(buzzerPin, LOW);   // Turn off the buzzer.
-    }
-  }
+  
 
 // Clear all settings and reset display.
   void clearAll() {
