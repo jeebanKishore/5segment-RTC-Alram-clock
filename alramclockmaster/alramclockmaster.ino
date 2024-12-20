@@ -121,7 +121,7 @@ void checkSwitch() {
     if (sw1_status) {
       beep();
       delay(300);
-      menu();  // go to menu if switch one is pressed
+      displayMenu();  // go to menu if switch one is pressed
       delay(200);
     }
 
@@ -152,11 +152,13 @@ void displayMenu() {
   }
 
   if (sw1_status) {
+    Serial.println("sw 1 pressed");
     beep();
     delay(300);
     menu();
     delay(200);
   } else {
+    Serial.println("Exiting function");
     beep();
   }
 }
@@ -188,6 +190,7 @@ void menu() {
 
 // Function to set the current time
 int setTime() {
+      Serial.println("Set time");
   int time_changed_status = 0;
   int my_hour_tmp = 0;
   DateTime now = rtc.now();
@@ -242,6 +245,8 @@ int setTime() {
 
 // Function to set the current date
 int setDate() {
+        Serial.println("Set Date");
+
   int date_changed_status = 0;
   DateTime now = rtc.now();
   int my_date = now.day();
@@ -294,6 +299,8 @@ int setDate() {
 
 // Function to set the current year
 int setYear() {
+        Serial.println("Set year");
+
   int year_changed_status = 0;
   DateTime now = rtc.now();
   int my_year = now.year();
@@ -339,6 +346,8 @@ int setYear() {
 
 // Function to set the alarm time
 int setAlarm() {
+        Serial.println("Set Alram");
+
   int alarm_changed_status = 0;
   int alarm_hour = 0, alarm_min = 0, alarm_hour_temp = 0;
   readSwitchStatus();
@@ -430,10 +439,6 @@ boolean readSwitchStatus() {
 //   return (sw1_status || sw2_status || sw3_status || sw4_status || sw5_status);
 // }
 
-// Function to check if any switch is active
-boolean anySwitchActive() {
-  return (sw1_status || sw2_status || sw3_status || sw4_status || sw5_status);
-}
 
 // Arduino setup function which runs once at the start
 void setup() {
