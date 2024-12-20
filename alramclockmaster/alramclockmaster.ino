@@ -9,6 +9,12 @@ const int buzzerPin = 13;          // Pin number for the buzzer.
 boolean isAlarmActive = false;     // Flag to check if the alarm is active.
 boolean sw1_status = 0, sw2_status = 0, sw3_status = 0, sw4_status = 0, sw5_status = 0;
 int switch_status = 0;
+
+// Debounce Configuration
+const int debounceDelay = 50;                                     // Debounce time in milliseconds
+unsigned long lastDebounceTime[5] = { 0, 0, 0, 0, 0 };            // Tracks debounce time for each switch
+bool lastSwitchState[5] = { false, false, false, false, false };  // Last stable state for each switch
+
 // Function to send data via I2C
 void sendDataViaI2C(const char *data) {
   Serial.print("Data sent: ");
@@ -125,8 +131,7 @@ void checkSwitch() {
 
     else if (sw3_status) {
       displayTemperature();  // display tempreature if switch 3 is pressed
-    }
-    else if (sw4_status) {
+    } else if (sw4_status) {
       displayAlarm(1);
     }
   }
@@ -136,7 +141,7 @@ void checkSwitch() {
 void displayMenu() {
   Serial.println("Entered menu");
   delay(100);
-  while (!anySwitchActive()) {
+  while (!readSwitchStatus()) {
     sendDataViaI2C("Enu==1");
     DateTime now = rtc.now();
     if (now.second() % 2) {
@@ -160,7 +165,7 @@ void displayMenu() {
 void menu() {
   Serial.println("Entered menu");
   delay(100);
-  while (!anySwitchActive()) {
+  while (!readSwitchStatus()) {
     sendDataViaI2C("Enu==1");
     DateTime now = rtc.now();
     if (now.second() % 2) {
@@ -169,7 +174,7 @@ void menu() {
       sendDataViaI2C("Enu==1");
     }
   }
-delay(3000);
+  delay(3000);
   if (sw1_status) {
     delay(100);
     if (setTime()) return;
@@ -385,6 +390,45 @@ boolean readSwitchStatus() {
   sw4_status = FastGPIO::Pin<7>::isInputHigh() == HIGH;
   return (sw1_status || sw2_status || sw3_status || sw4_status || sw5_status);
 }
+
+// Function to read the status of each switch with debounce
+// boolean readSwitchStatus() {
+//   unsigned long currentTime = millis();
+
+//   // Read raw switch inputs
+//   bool rawSwitchStates[5] = {
+//     FastGPIO::Pin<4>::isInputHigh() == HIGH,
+//     FastGPIO::Pin<5>::isInputHigh() == HIGH,
+//     FastGPIO::Pin<6>::isInputHigh() == HIGH,
+//     FastGPIO::Pin<7>::isInputHigh() == HIGH,
+//     FastGPIO::Pin<3>::isInputHigh() == HIGH,
+//   };
+
+//   // Apply debounce logic
+//   for (int i = 0; i < 5; i++) {
+//     if (rawSwitchStates[i] != lastSwitchState[i]) {
+//       // Switch state has changed, reset debounce timer
+//       lastDebounceTime[i] = currentTime;
+//     }
+
+//     if ((currentTime - lastDebounceTime[i]) > debounceDelay) {
+//       // If stable for debounce period, update the stable state
+//       if (rawSwitchStates[i] != lastSwitchState[i]) {
+//         lastSwitchState[i] = rawSwitchStates[i];
+
+//         // Update the respective switch status
+//         if (i == 0) sw1_status = lastSwitchState[i];
+//         else if (i == 1) sw2_status = lastSwitchState[i];
+//         else if (i == 2) sw3_status = lastSwitchState[i];
+//         else if (i == 3) sw4_status = lastSwitchState[i];
+//         else if (i == 4) sw5_status = lastSwitchState[i];
+//       }
+//     }
+//   }
+
+//   // Return true if any switch is active
+//   return (sw1_status || sw2_status || sw3_status || sw4_status || sw5_status);
+// }
 
 // Function to check if any switch is active
 boolean anySwitchActive() {
