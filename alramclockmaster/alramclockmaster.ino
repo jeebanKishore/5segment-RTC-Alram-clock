@@ -166,27 +166,27 @@ int displayMenu() {
 int setTime() {
   sendDataRepeatedly("5ttIE0", 2000);
   int time_changed_status = 0;
-  int my_hour_tmp = 0;
   DateTime now = rtc.now();
   int my_hour = now.hour();
   int my_min = now.minute();
   beep();
   delay(100);
   readSwitchStatus();
-
-  delay(100);
   while (!sw1_status) {
     readSwitchStatus();
+    sendUpdatedTimeToDisplay(my_hour, my_min);
     if (sw2_status) {
       time_changed_status = 1;
-      delay(150);
+      delay(100);
       my_hour++;
       if (my_hour > 23) my_hour = 0;
+      sendUpdatedTimeToDisplay(my_hour, my_min);
     } else if (sw3_status) {
       time_changed_status = 1;
       delay(100);
       my_min++;
       if (my_min > 59) my_min = 0;
+      sendUpdatedTimeToDisplay(my_hour, my_min);
     } else if (sw4_status) {
       beep();
       delay(100);
@@ -198,20 +198,23 @@ int setTime() {
         rtc.adjust(DateTime(my_year, my_month, my_date, my_hour, my_min, 0));
         beep();
         delay(50);
-        sendDataRepeatedly("TI5Et0", 2000);
+        sendDataRepeatedly("tI5Et0", 2000);
         time_changed_status = 0;
+        sendUpdatedTimeToDisplay(my_hour, my_min);
       }
       return 1;
     }
 
-    const char *apDigit = (my_hour > 12 && my_min > 0) ? "P" : "A";
-    if (my_hour == 0) my_hour_tmp = 12;
-    else if (my_hour > 12) my_hour_tmp = my_hour - 12;
+    // const char *apDigit = (my_hour > 12 && my_min > 0) ? "P" : "A";
+    // if (my_hour == 0) my_hour_tmp = 12;
+    // else if (my_hour > 12) my_hour_tmp = my_hour - 12;
 
-    char dispString[7];
-    snprintf(dispString, sizeof(dispString), "%c%02d%02d1", apDigit[0], my_hour_tmp, my_min);
-    sendDataViaI2C(dispString);
+    // char dispString[7];
+    // snprintf(dispString, sizeof(dispString), "%c%02d%02d1", apDigit[0], my_hour_tmp, my_min);
+    // sendDataViaI2C(dispString);
   }
+
+
 
   // if (time_changed_status) {
   //   DateTime now = rtc.now();
@@ -229,9 +232,21 @@ int setTime() {
   return 0;
 }
 
+int sendUpdatedTimeToDisplay(int my_hour, int my_min) {
+  int my_hour_tmp = my_hour;
+  const char *apDigit = (my_hour > 12 && my_min > 0) ? "P" : "A";
+  if (my_hour == 0) my_hour_tmp = 12;
+  else if (my_hour > 12) my_hour_tmp = my_hour - 12;
+
+  char dispString[7];
+  snprintf(dispString, sizeof(dispString), "%c%02d%02d1", apDigit[0], my_hour_tmp, my_min);
+  sendDataViaI2C(dispString);
+  return 0;
+}
+
 // Function to set the current date
 int setDate() {
-  sendDataRepeatedly("5tdtE0", 2000);
+  sendDataRepeatedly("5tdtE0", 5000);
   int date_changed_status = 0;
   DateTime now = rtc.now();
   int my_date = now.day();
@@ -242,19 +257,23 @@ int setDate() {
   delay(100);
   while (!sw1_status) {
     readSwitchStatus();
+    sendUpdatedDateToDisplay(my_date, my_month);
     if (sw2_status) {
       date_changed_status = 1;
       delay(150);
       my_date++;
       if (my_date > 31) my_date = 1;
+      sendUpdatedDateToDisplay(my_date, my_month);
     } else if (sw3_status) {
       date_changed_status = 1;
       delay(150);
       my_month++;
       if (my_month > 12) my_month = 1;
+      sendUpdatedDateToDisplay(my_date, my_month);
     } else if (sw4_status) {
       beep();
       if (date_changed_status) {
+        sendUpdatedDateToDisplay(my_date, my_month);
         DateTime now = rtc.now();
         int my_hour = now.hour();
         int my_min = now.minute();
@@ -267,15 +286,15 @@ int setDate() {
       return 1;
     }
 
-    char dateString[7];
-    sprintf(dateString, "d%02d%02d1", my_date, my_month);
-    sendDataViaI2C(dateString);
-    delay(5000);
+    // char dateString[7];
+    // sprintf(dateString, "d%02d%02d1", my_date, my_month);
+    // sendDataViaI2C(dateString);
+    // delay(5000);
 
-    char yearString[6];
-    sprintf(yearString, "Y%04d0", my_year);
-    sendDataViaI2C(yearString);
-    delay(5000);
+    // char yearString[6];
+    // sprintf(yearString, "Y%04d0", my_year);
+    // sendDataViaI2C(yearString);
+    // delay(5000);
   }
 
   // if (date_changed_status) {
@@ -292,9 +311,16 @@ int setDate() {
   return 0;
 }
 
+int sendUpdatedDateToDisplay(int my_date, int my_month) {
+  char dateString[7];
+  sprintf(dateString, "d%02d%02d1", my_date, my_month);
+  sendDataViaI2C(dateString);
+  return 0;
+}
+
 // Function to set the current year
 int setYear() {
-  sendDataRepeatedly("5tYEA0", 2000);
+  sendDataRepeatedly("5tYEA0", 5000);
   int year_changed_status = 0;
   DateTime now = rtc.now();
   int my_year = now.year();
@@ -302,6 +328,7 @@ int setYear() {
   beep();
   while (!sw1_status) {
     readSwitchStatus();
+    setUpdatedYearToDisplay(my_year);
     if (sw2_status) {
       year_changed_status = 1;
       delay(150);
@@ -329,9 +356,9 @@ int setYear() {
       return 1;
     }
 
-    char yearString[6];
-    sprintf(yearString, "Y%04d0", my_year);
-    sendDataViaI2C(yearString);
+    // char yearString[6];
+    // sprintf(yearString, "Y%04d0", my_year);
+    // sendDataViaI2C(yearString);
   }
 
   // if (year_changed_status) {
@@ -347,6 +374,13 @@ int setYear() {
 
   getTime();
   delay(200);
+  return 0;
+}
+
+int setUpdatedYearToDisplay(int my_year) {
+  char yearString[6];
+  sprintf(yearString, "Y%04d0", my_year);
+  sendDataViaI2C(yearString);
   return 0;
 }
 
@@ -431,6 +465,7 @@ boolean readSwitchStatus() {
   };
 
   // Apply debounce logic
+  bool switchActivated = false;
   for (int i = 0; i < 5; i++) {
     if (rawSwitchStates[i] != lastSwitchState[i]) {
       // Switch state has changed, reset debounce timer
