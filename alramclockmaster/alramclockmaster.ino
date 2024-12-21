@@ -8,16 +8,18 @@ const int buzzerPin = 13;                // Pin number for the buzzer.
 volatile boolean isAlarmActive = false;  // Flag to check if the alarm is active.
 volatile boolean sw1_status = 0, sw2_status = 0, sw3_status = 0, sw4_status = 0, sw5_status = 0;
 volatile int switch_status = 0;
-const int sw1 = 4, sw2 = 5, sw3 = 6, sw4 = 7;
+const int sw1 = 4, sw2 = 5, sw3 = 6, sw4 = 7, sw5 = 3;
 // Debounce Configuration
 const int debounceDelay = 50;                                     // Debounce time in milliseconds
 unsigned long lastDebounceTime[5] = { 0, 0, 0, 0, 0 };            // Tracks debounce time for each switch
 bool lastSwitchState[5] = { false, false, false, false, false };  // Last stable state for each switch
-
+uint16_t my_year  = 0;
+uint8_t my_month = 0, my_date = 0, my_hour = 0, my_min = 0, my_sec = 0, alarm_hour = 0, alarm_min = 0;
 // Function to send data via I2C
 void sendDataViaI2C(const char *data) {
   if (strlen(data) != 6) {
     Serial.println("Error: Data must be exactly 6 characters long.");
+    Serial.println(data);
     return;
   }
   Wire.beginTransmission(displayAddress);
@@ -151,9 +153,9 @@ int displayMenu() {
     // Set the clock parameters
     delay(100);
     if (setTime()) return 1;
+    else if (setAlarm()) return 1;
     else if (setDate()) return 1;
     else if (setYear()) return 1;
-    else if (setAlarm()) return 1;
   } else {
     beep();
   }
@@ -174,19 +176,19 @@ int setTime() {
   readSwitchStatus();
   while (!sw1_status) {
     readSwitchStatus();
-    sendUpdatedTimeToDisplay(my_hour, my_min);
+    sendUpdatedTimeOrAlaramToDisplay(my_hour, my_min);
     if (sw2_status) {
       time_changed_status = 1;
-      delay(100);
+      delay(150);
       my_hour++;
       if (my_hour > 23) my_hour = 0;
-      sendUpdatedTimeToDisplay(my_hour, my_min);
+      sendUpdatedTimeOrAlaramToDisplay(my_hour, my_min);
     } else if (sw3_status) {
       time_changed_status = 1;
-      delay(100);
+      delay(150);
       my_min++;
       if (my_min > 59) my_min = 0;
-      sendUpdatedTimeToDisplay(my_hour, my_min);
+      sendUpdatedTimeOrAlaramToDisplay(my_hour, my_min);
     } else if (sw4_status) {
       beep();
       delay(100);
@@ -194,13 +196,13 @@ int setTime() {
         DateTime now = rtc.now();
         int my_date = now.day();
         int my_month = now.month();
-        int my_year = now.year();
+        uint16_t my_year = now.year();
         rtc.adjust(DateTime(my_year, my_month, my_date, my_hour, my_min, 0));
         beep();
         delay(50);
         sendDataRepeatedly("tI5Et0", 2000);
         time_changed_status = 0;
-        sendUpdatedTimeToDisplay(my_hour, my_min);
+        sendUpdatedTimeOrAlaramToDisplay(my_hour, my_min);
       }
       return 1;
     }
@@ -220,7 +222,7 @@ int setTime() {
   //   DateTime now = rtc.now();
   //   int my_date = now.day();
   //   int my_month = now.month();
-  //   int my_year = now.year();
+  //   uint16_t my_year = now.year();
   //   rtc.adjust(DateTime(my_year, my_month, my_date, my_hour, my_min, 0));
   //   beep();
   //   delay(50);
@@ -232,7 +234,7 @@ int setTime() {
   return 0;
 }
 
-int sendUpdatedTimeToDisplay(int my_hour, int my_min) {
+int sendUpdatedTimeOrAlaramToDisplay(int my_hour, int my_min) {
   int my_hour_tmp = my_hour;
   const char *apDigit = (my_hour > 12 && my_min > 0) ? "P" : "A";
   if (my_hour == 0) my_hour_tmp = 12;
@@ -251,7 +253,7 @@ int setDate() {
   DateTime now = rtc.now();
   int my_date = now.day();
   int my_month = now.month();
-  int my_year = now.year();
+  uint16_t my_year = now.year();
   readSwitchStatus();
   beep();
   delay(100);
@@ -311,6 +313,11 @@ int setDate() {
   return 0;
 }
 
+int storeGlobalTime(){
+  DateTime now = rtc.now();
+  
+}
+
 int sendUpdatedDateToDisplay(int my_date, int my_month) {
   char dateString[7];
   sprintf(dateString, "d%02d%02d1", my_date, my_month);
@@ -323,7 +330,9 @@ int setYear() {
   sendDataRepeatedly("5tYEA0", 5000);
   int year_changed_status = 0;
   DateTime now = rtc.now();
-  int my_year = now.year();
+  uint16_t my_year = now.year();
+  Serial.println("Year set start");
+  Serial.println(my_year);
   readSwitchStatus();
   beep();
   while (!sw1_status) {
@@ -333,25 +342,37 @@ int setYear() {
       year_changed_status = 1;
       delay(150);
       my_year--;
-      if (my_year < 2024) my_year = 2024;
+      if (my_year < 2000) my_year = 2000;
+      setUpdatedYearToDisplay(my_year);
     } else if (sw3_status) {
       year_changed_status = 1;
       delay(150);
       my_year++;
       if (my_year > 2070) my_year = 2070;
+      setUpdatedYearToDisplay(my_year);
     } else if (sw4_status) {
       beep();
+      setUpdatedYearToDisplay(my_year);
       if (year_changed_status) {
+        Serial.println("adter button press");
         DateTime now = rtc.now();
-        int my_hour = now.hour();
-        int my_min = now.minute();
-        int my_date = now.day();
-        int my_month = now.month();
-        rtc.adjust(DateTime(my_year, my_month, my_date, my_hour, my_min, 0));
+        const int my_hour = now.hour();
+        const int my_min = now.minute();
+        const int my_date = now.day();
+        const int my_month = now.month();
+        Serial.println(my_year);
+        Serial.println(my_month);
+        Serial.println(my_date);
+        Serial.println(my_hour);
+        Serial.println(my_min);
+        Serial.println("****************");
+        rtc.adjust(DateTime(my_year,my_month,my_date,my_hour,my_min,0));
         beep();
         delay(50);
+
+        sendDataRepeatedly("YE5Et0", 5000);
         year_changed_status = 0;
-        sendDataRepeatedly("YE5Et", 2000);
+        setUpdatedYearToDisplay(my_year);
       }
       return 1;
     }
@@ -377,7 +398,7 @@ int setYear() {
   return 0;
 }
 
-int setUpdatedYearToDisplay(int my_year) {
+int setUpdatedYearToDisplay(uint16_t my_year) {
   char yearString[6];
   sprintf(yearString, "Y%04d0", my_year);
   sendDataViaI2C(yearString);
@@ -387,22 +408,30 @@ int setUpdatedYearToDisplay(int my_year) {
 // Function to set the alarm time
 int setAlarm() {
   sendDataRepeatedly("5EtAL0", 2000);
+  DateTime alarmTime = rtc.getAlarm1();
+  int alarm_hour = alarmTime.hour();
+  int alarm_min = alarmTime.minute();
+  Serial.println(alarm_hour);
+  Serial.println(alarm_min);
   int alarm_changed_status = 0;
-  int alarm_hour = 0, alarm_min = 0, alarm_hour_temp = 0;
   readSwitchStatus();
+  // sendUpdatedTimeOrAlaramToDisplay(alarm_hour, alarm_min);
   beep();
   while (!sw1_status) {
     readSwitchStatus();
+    sendUpdatedTimeOrAlaramToDisplay(alarm_hour, alarm_min);
     if (sw2_status) {
       alarm_changed_status = 1;
       delay(150);
       alarm_hour++;
       if (alarm_hour > 23) alarm_hour = 0;
+      sendUpdatedTimeOrAlaramToDisplay(alarm_hour, alarm_min);
     } else if (sw3_status) {
       alarm_changed_status = 1;
       delay(150);
       alarm_min++;
       if (alarm_min > 59) alarm_min = 0;
+      sendUpdatedTimeOrAlaramToDisplay(alarm_hour, alarm_min);
     } else if (sw4_status) {
       beep();
       if (alarm_changed_status) {
@@ -411,8 +440,15 @@ int setAlarm() {
         rtc.setAlarm1(DateTime(0, 0, 0, alarm_hour, alarm_min, 0), DS3231_A1_Hour);
         beep();
         delay(200);
-        alarm_changed_status = 0;
         sendDataRepeatedly("AL5Et0", 2000);
+        alarm_changed_status = 0;
+        sendUpdatedTimeOrAlaramToDisplay(alarm_hour, alarm_min);
+        DateTime alarmTime = rtc.getAlarm1();
+        int alarm_hour = alarmTime.hour();
+        int alarm_min = alarmTime.minute();
+        Serial.println("After Set alram");
+        Serial.println(alarm_hour);
+        Serial.println(alarm_min);
       } else {
         sendDataRepeatedly("ALoFF0", 2000);
         rtc.disableAlarm(1);
@@ -421,13 +457,13 @@ int setAlarm() {
       return 1;
     }
 
-    const char *apDigit = (alarm_hour > 12 && alarm_min > 0) ? "P" : "A";
-    if (alarm_hour == 0) alarm_hour_temp = 12;
-    else if (alarm_hour > 12) alarm_hour_temp = alarm_hour - 12;
+    // const char *apDigit = (alarm_hour > 12 && alarm_min > 0) ? "P" : "A";
+    // if (alarm_hour == 0) alarm_hour_temp = 12;
+    // else if (alarm_hour > 12) alarm_hour_temp = alarm_hour - 12;
 
-    char dispString[7];
-    snprintf(dispString, sizeof(dispString), "%c%02d%02d", apDigit[0], alarm_hour_temp, alarm_min);
-    sendDataViaI2C(dispString);
+    // char dispString[7];
+    // snprintf(dispString, sizeof(dispString), "%c%02d%02d", apDigit[0], alarm_hour_temp, alarm_min);
+    // sendDataViaI2C(dispString);
   }
 
   delay(100);
@@ -465,7 +501,6 @@ boolean readSwitchStatus() {
   };
 
   // Apply debounce logic
-  bool switchActivated = false;
   for (int i = 0; i < 5; i++) {
     if (rawSwitchStates[i] != lastSwitchState[i]) {
       // Switch state has changed, reset debounce timer
@@ -490,7 +525,6 @@ boolean readSwitchStatus() {
   // Return true if any switch is active
   return (sw1_status || sw2_status || sw3_status || sw4_status || sw5_status);
 }
-
 
 // Arduino setup function which runs once at the start
 void setup() {
@@ -519,11 +553,21 @@ void setup() {
   rtc.clearAlarm(2);
   rtc.writeSqwPinMode(DS3231_OFF);
   Serial.println(F("RTC Display Initialized"));
+  DateTime now = rtc.now();
+  int my_hour = now.hour();
+  int my_min = now.minute();
+  int my_date = now.day();
+  int my_month = now.month();
+  uint16_t my_year = now.year();
+  Serial.println(my_year);
+  Serial.println(my_month);
+  Serial.println(my_date);
+  Serial.println(my_hour);
+  Serial.println(my_min);
 }
 
 // Arduino loop function which runs repeatedly after setup
 void loop() {
-  Serial.println("Loop Start: ");
   checkSwitch();
   getTime();
   delay(1);
