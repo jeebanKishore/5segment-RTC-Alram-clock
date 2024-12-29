@@ -1,13 +1,18 @@
 #include <Wire.h>
+#include <AceButton.h>
 #include "RTClib.h"
 #define SNOOZE_DURATION 300000  // Snooze duration in milliseconds (e.g., 5 minutes)
 // Global Variables
-RTC_DS3231 rtc;                             // Instance of RTC_DS3231 to manage RTC operations.
+RTC_DS3231 rtc;
+
+using ace_button::AceButton;
+using ace_button::ButtonConfig;
+using ace_button::LadderButtonConfig;
+// Instance of RTC_DS3231 to manage RTC operations.
 const byte displayAddress = 0x2A;           // I2C address of the display.
-const uint8_t buzzerPin = 13;               // Pin number for the buzzer.
+const uint8_t buzzerPin = A1;               // Pin number for the buzzer.
 volatile boolean isAlarmActive = false;     // Flag to check if the alarm is active.
 volatile unsigned long alarmStartTime = 0;  // When the alram started from
-volatile boolean alarmTriggered = false;    // New flag for alarm activation
 volatile boolean snoozeflag = 0;
 volatile boolean sw1_status = 0, sw2_status = 0, sw3_status = 0, sw4_status = 0;
 volatile uint8_t switch_status = 0;
@@ -22,6 +27,128 @@ uint8_t my_month = 0, my_date = 0, my_hour = 0, my_min = 0, my_sec = 0, alarm_ho
 unsigned long lastBeepTime = 0;
 uint16_t currentBeepDelay = 1500;
 bool beepState = false;
+
+
+//-----------------------------------------------------------------------------
+// Configure AceButton
+//-----------------------------------------------------------------------------
+
+// The ADC pin used by the resistor ladder. Change to A6 pin on actual hardware
+static const uint8_t BUTTON_PIN = A2;
+
+// Create 4 AceButton objects, with their corresonding virtual pin numbers 0 to
+// 3. Note that we could use an array of `AceButton BUTTONS[NUM_BUTTONS]`, and
+// use a loop in setup() to initialize these buttons. But I think writing this
+// out explicitly is easier to understand for demo purposes.
+//
+// We use the 4-parameter AceButton() constructor with the `buttonConfig`
+// parameter set to `nullptr` to prevent the creation of the default
+// SystemButtonConfig which will never be used. This saves about 30 bytes of
+// flash and 26 bytes of static RAM on an AVR processor.
+static const uint8_t NUM_BUTTONS = 5;
+static AceButton b0(nullptr, 0);
+static AceButton b1(nullptr, 1);
+static AceButton b2(nullptr, 2);
+static AceButton b3(nullptr, 3);
+static AceButton b4(nullptr, 4);
+// button 4 cannot be used because it represents "no button pressed"
+static AceButton *const BUTTONS[NUM_BUTTONS] = {
+  &b0,
+  &b1,
+  &b2,
+  &b3,
+  &b4,
+};
+
+// Define the ADC voltage levels for each button. In this example, we want 4
+// buttons, so we need 5 levels. Ideally, the voltage levels should correspond
+// to 0%, 25%, 50%, 75%, 100%. We can get pretty close by using some common
+// resistor values (4.7k, 10k, 47k). Use the examples/LadderButtonCalibrator
+// program to double-check these calculated values.
+static const uint8_t NUM_LEVELS = NUM_BUTTONS + 1;
+static const uint16_t LEVELS[NUM_LEVELS] = {
+  0 /* 0%, short to ground */,
+  510 /* 0%, short to ground */,
+  681 /* 32%, 4.7 kohm */,
+  770 /* 50%, 10 kohm */,
+  819 /* 82%, 47 kohm */,
+  1023 /* 100%, open circuit */,
+};
+
+// The LadderButtonConfig constructor binds the AceButton objects in the BUTTONS
+// array to the LadderButtonConfig.
+static LadderButtonConfig buttonConfig(
+  BUTTON_PIN, NUM_LEVELS, LEVELS, NUM_BUTTONS, BUTTONS);
+
+// The event handler for the buttons.
+void handleEvent(AceButton *button, uint8_t eventType, uint8_t /*buttonState*/) {
+  // Control the Buzzer only for Pressed and Released events.
+  // If the MCU is rebooted while the button is pressed down, no event is triggered.
+  switch (eventType) {
+    case AceButton::kEventPressed:
+      digitalWrite(buzzerPin, HIGH);
+      break;
+    case AceButton::kEventReleased:
+      digitalWrite(buzzerPin, LOW);
+      break;
+  }
+  if (AceButton::kEventClicked) {
+    uint8_t pin = button->getPin();
+    // Serial.println(pin);
+    // Reset all switch statuses
+    switch_status = sw1_status = sw2_status = sw3_status = sw4_status = 0;
+
+    // Set the corresponding switch status based on the clicked button
+    switch (pin) {
+      case 1:
+        {
+          sw1_status = 1;
+          break;
+        }
+      case 2:
+        {
+          sw2_status = 1;
+          break;
+        }
+      case 3:
+        {
+          sw3_status = 1;
+          break;
+        }
+      case 4:
+        {
+          sw4_status = 1;
+          break;
+        }
+      default:
+        // No action needed if not button 1-4
+        break;
+    }
+  }
+}
+
+
+// On most processors, this should be called every 4-5ms or faster, if the
+// default debouncing time is ~20ms. On a ESP8266, we must sample *no* faster
+// than 4-5 ms to avoid disconnecting the WiFi connection. See
+// https://github.com/esp8266/Arduino/issues/1634 and
+// https://github.com/esp8266/Arduino/issues/5083. To be safe, let's rate-limit
+// this on all processors to about 200 samples/second.
+void checkButtons() {
+  static uint16_t prev = millis();
+
+  // DO NOT USE delay(5) to do this.
+  // The (uint16_t) cast is required on 32-bit processors, harmless on 8-bit.
+  uint16_t now = millis();
+  if ((uint16_t)(now - prev) >= 5) {
+    prev = now;
+    buttonConfig.checkButtons();
+  }
+}
+
+
+
+//-----------------------------------------------------------------------------
 
 // Updaate Gloal time details
 int updateGlobalTimeVars() {
@@ -40,8 +167,8 @@ int updateGlobalTimeVars() {
 // Function to send data via I2C
 void sendDataViaI2C(const char *data) {
   if (strlen(data) != 6) {
-    Serial.println("Error: Data must be exactly 6 characters long.");
-    Serial.println(data);
+    // Serial.println("Error: Data must be exactly 6 characters long.");
+    // Serial.println(data);
     return;
   }
   Wire.beginTransmission(displayAddress);
@@ -110,7 +237,7 @@ void beep(bool continuous = false, int initialBeepDelay = 20) {
 
         // Gradually decrease the delay, but not below 300ms
         if (beepState && currentBeepDelay > 300) {
-          currentBeepDelay -= 50;                              // Decrease the delay by 50ms each iteration
+          currentBeepDelay -= 5;                               // Decrease the delay by 50ms each iteration
           if (currentBeepDelay < 300) currentBeepDelay = 300;  // Cap at 300ms
         }
       }
@@ -126,34 +253,26 @@ void beep(bool continuous = false, int initialBeepDelay = 20) {
 
 
 // Function to stop the alarm completely
-int stopAlarm() {
-  Serial.println("RTC Alarm stopping....");
+void stopAlarm() {
+  // Serial.println("RTC Alarm stopping....");
   if (!isAlarmActive) return;
-  Serial.println("Alarm stopped");
+  // Serial.println("Alarm stopped");
   isAlarmActive = false;
   snoozeflag = false;
   rtc.clearAlarm(1);                   // Clear any active alarm flags
   sendDataRepeatedly("ALoFF0", 5000);  // Notify the display
   beep();                              // Signal that the alarm is stopped
-  return 0;
 }
 
 // Function to snooze the alarm for 5 minutes
-int snoozeAlarm() {
+void snoozeAlarm() {
   if (!isAlarmActive) return;
-  Serial.println("Alarm snoozed for 5 minutes");
+  // Serial.println("Alarm snoozed for 5 minutes");
   isAlarmActive = false;                        // Temporarily disable the alarm
   alarmStartTime = millis() + SNOOZE_DURATION;  // Set snooze duration
   rtc.clearAlarm(1);                            // Clear the alarm
   sendDataRepeatedly("SnooZ0", 2000);           // Notify the display
   beep();                                       // Signal snooze activation
-  return 0;
-}
-
-// Function to activate the alarm
-void activateAlarm() {
-  Serial.println("Alram triggred");
-  alarmTriggered = true;  // Set the flag for alarm activation
 }
 
 void checkSwitch() {
@@ -179,7 +298,7 @@ void checkSwitch() {
 
 // Function to display the menu
 int displayMenu() {
-  Serial.println("Entered menu");
+  // Serial.println("Entered menu");
   sendDataRepeatedly("Enu==1", 2000);
   delay(100);
   // display an animation when entered into menu
@@ -315,8 +434,8 @@ int setYear() {
   sendDataRepeatedly("5tYEA0", 5000);
   boolean year_changed_status = 0;
   updateGlobalTimeVars();
-  Serial.println("Year set start");
-  Serial.println(my_year);
+  // Serial.println("Year set start");
+  // Serial.println(my_year);
   readSwitchStatus();
   beep();
   while (!sw1_status) {
@@ -338,14 +457,14 @@ int setYear() {
       beep();
       setUpdatedYearToDisplay(my_year);
       if (year_changed_status) {
-        Serial.println("adter button press");
+        // Serial.println("adter button press");
 
-        Serial.println(my_year);
-        Serial.println(my_month);
-        Serial.println(my_date);
-        Serial.println(my_hour);
-        Serial.println(my_min);
-        Serial.println("****************");
+        // Serial.println(my_year);
+        // Serial.println(my_month);
+        // Serial.println(my_date);
+        // Serial.println(my_hour);
+        // Serial.println(my_min);
+        // Serial.println("****************");
         rtc.adjust(DateTime(my_year, my_month, my_date, my_hour, my_min, 0));
         beep();
         delay(50);
@@ -376,8 +495,8 @@ int setUpdatedYearToDisplay(uint16_t my_year) {
 int setAlarm() {
   sendDataRepeatedly("5EtAL0", 2000);
   updateGlobalTimeVars();
-  Serial.println(alarm_hour);
-  Serial.println(alarm_min);
+  // Serial.println(alarm_hour);
+  // Serial.println(alarm_min);
   boolean alarm_changed_status = 0;
   readSwitchStatus();
   // sendUpdatedTimeOrAlaramToDisplay(alarm_hour, alarm_min);
@@ -408,9 +527,9 @@ int setAlarm() {
         sendDataRepeatedly("AL5Et0", 2000);
         alarm_changed_status = 0;
         sendUpdatedTimeOrAlaramToDisplay(alarm_hour, alarm_min);
-        Serial.println("After Set alram");
-        Serial.println(alarm_hour);
-        Serial.println(alarm_min);
+        // Serial.println("After Set alram");
+        // Serial.println(alarm_hour);
+        // Serial.println(alarm_min);
       } else {
         sendDataRepeatedly("ALoFF0", 2000);
         rtc.disableAlarm(1);
@@ -427,58 +546,24 @@ int setAlarm() {
 
 //Function to read the status of each switch with debounce
 boolean readSwitchStatus() {
-  unsigned long currentTime = millis();
-
-  // Read raw switch inputs
-  bool rawSwitchStates[5] = {
-    sw1_status = digitalRead(sw1),
-    sw2_status = digitalRead(sw2),
-    sw3_status = digitalRead(sw3),
-    sw4_status = digitalRead(sw4),
-  };
-
-  // Apply debounce logic
-  for (uint8_t i = 0; i < 5; i++) {
-    if (rawSwitchStates[i] != lastSwitchState[i]) {
-      // Switch state has changed, reset debounce timer
-      lastDebounceTime[i] = currentTime;
-    }
-
-    if ((currentTime - lastDebounceTime[i]) > debounceDelay) {
-      // If stable for debounce period, update the stable state
-      if (rawSwitchStates[i] != lastSwitchState[i]) {
-        lastSwitchState[i] = rawSwitchStates[i];
-
-        // Update the respective switch status
-        if (i == 0) sw1_status = lastSwitchState[i];
-        else if (i == 1) sw2_status = lastSwitchState[i];
-        else if (i == 2) sw3_status = lastSwitchState[i];
-        else if (i == 3) sw4_status = lastSwitchState[i];
-      }
-    }
-  }
-
   // Return true if any switch is active
   return (sw1_status || sw2_status || sw3_status || sw4_status);
 }
 
 // Arduino setup function which runs once at the start
 void setup() {
-  Serial.begin(115200);
-  pinMode(sw1, INPUT);
-  pinMode(sw2, INPUT);
-  pinMode(sw3, INPUT);
-  pinMode(sw4, INPUT);
+  // Serial.begin(115200);
 
   pinMode(buzzerPin, OUTPUT);
   Wire.begin();
-  pinMode(2, INPUT_PULLUP);
-  pinMode(3, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(2), activateAlarm, FALLING);
-
+  // Don't use internal pull-up resistor because it will change the effective
+  // resistance of the resistor ladder.
+  pinMode(BUTTON_PIN, INPUT);
+  buttonConfig.setEventHandler(handleEvent);
+  buttonConfig.setFeature(ButtonConfig::kFeatureClick);
   if (!rtc.begin()) {
-    Serial.println("Couldn't find RTC");
-    Serial.flush();
+    // Serial.println("Couldn't find RTC");
+    // Serial.flush();
     abort();
   }
   rtc.disable32K();
@@ -488,40 +573,37 @@ void setup() {
   rtc.disableAlarm(2);
 
   rtc.writeSqwPinMode(DS3231_OFF);
-  Serial.println(F("RTC Display Initialized"));
+  // Serial.println(F("RTC Display Initialized"));
 }
-
 
 void loop() {
   updateGlobalTimeVars();
   checkSwitch();
   getTime();
 
-  // Handle the interrupt flag in the main loop
-  if (alarmTriggered) {
-    alarmTriggered = false;  // Reset the interrupt flag
 
-    if (rtc.alarmFired(1)) {  // Check if the alarm is triggered
-      Serial.println(F("RTC Alarm triggered"));
-      isAlarmActive = true;
-      alarmStartTime = millis();  // Record the alarm start time
-      currentBeepDelay = 20;      // Reset beep delay
-    } else {
-      Serial.println(F("False interrupt detected"));
-    }
+
+  if (rtc.alarmFired(1) == true) {  // Check if the alarm is triggered
+    // Serial.println(F("RTC Alarm triggered"));
+    isAlarmActive = true;
+    alarmStartTime = millis();  // Record the alarm start time
+    currentBeepDelay = 20;      // Reset beep delay
+  } else {
+    // Serial.println(F("False interrupt detected"));
   }
+
 
   // Handle active alarm
   if (isAlarmActive) {
     rtc.clearAlarm(1);  // Clear the alarm
 
     // Check switch inputs
-    if (digitalRead(sw4)) {
+    if (sw4_status == 1) {
       // Stop the alarm
-      Serial.println(F("RTC Alarm stopping"));
+      // Serial.println(F("RTC Alarm stopping"));
       stopAlarm();
       return;
-    } else if (digitalRead(sw1) || digitalRead(sw2) || digitalRead(sw3)) {
+    } else if (sw1_status == 1 || sw2_status == 1 || sw3_status == 1) {
       // Snooze the alarm for 5 minutes
       snoozeflag = true;
       snoozeAlarm();
@@ -529,8 +611,9 @@ void loop() {
     }
 
     // Check if 15 minutes have elapsed since the alarm started
-    if (millis() - alarmStartTime >= 15 * 60 * 1000) {
-      Serial.println(F("Alarm auto-stopped after 15 minutes"));
+    unsigned long alarmDuration = 15UL * 60UL * 1000UL;  // 15 minutes in milliseconds
+    if (millis() - alarmStartTime >= alarmDuration) {
+      // Serial.println(F("Alarm auto-stopped after 15 minutes"));
       stopAlarm();
       return;
     }
@@ -541,7 +624,7 @@ void loop() {
 
   // Handle snoozed alarm
   if (!isAlarmActive && snoozeflag && millis() >= alarmStartTime) {
-    Serial.println(F("Snoozed alarm reactivated"));
+    // Serial.println(F("Snoozed alarm reactivated"));
     isAlarmActive = true;
     alarmStartTime = millis();  // Reset the alarm start time
   }
