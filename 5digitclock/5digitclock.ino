@@ -161,24 +161,28 @@ void checkButtons() {
 
 //-----------------------------------------------------------------------------
 
-void checkSwitch() {
-  switch_status = readSwitchStatus();
-  if (switch_status) {
-    if (sw1_status) {
-      beep();
-      delay(300);
-      displayMenu();  // go to menu if switch one is pressed
-      delay(200);
-    } else if (sw2_status) {
-      beep();
-      displayDate();  // display date if switch 2 is pressed
-    } else if (sw3_status) {
-      beep();
-      displayTemperature();  // display tempreature if switch 3 is pressed
-    } else if (sw4_status) {
-      beep();
-      displayAlarm();
+void beep(bool continuous = false, int initialBeepDelay = 20) {
+  if (continuous) {
+    if (isAlarmActive) {
+      unsigned long currentTime = millis();
+      if (currentTime - lastBeepTime >= currentBeepDelay) {
+        beepState = !beepState;  // Toggle beep state
+        digitalWrite(buzzerPin, beepState ? HIGH : LOW);
+        lastBeepTime = currentTime;
+
+        // Gradually decrease the delay, but not below 300ms
+        if (beepState && currentBeepDelay > 300) {
+          currentBeepDelay -= 50;                              // Decrease the delay by 50ms each iteration
+          if (currentBeepDelay < 300) currentBeepDelay = 300;  // Cap at 300ms
+        }
+      }
+    } else {
+      digitalWrite(buzzerPin, LOW);  // Turn off beep when alarm is not active
     }
+  } else {
+    digitalWrite(buzzerPin, HIGH);
+    delay(initialBeepDelay);
+    digitalWrite(buzzerPin, LOW);
   }
 }
 // Clear all segments and anodes
@@ -195,7 +199,8 @@ void sendDataViaI2C(const char *data) {
     Serial.println(data);
     return;
   }
-  buf = data;
+  strncpy(buf, data, 6);  // Copy the data to the buffer
+  buf[6] = '\0';  // Ensure the buffer is null-terminated
 }
 
 // Function to send data repeatedly for a specified duration
@@ -361,64 +366,6 @@ void getTime() {
   char dispString[7];  // Increase size to 7
   snprintf(dispString, sizeof(dispString), "%c%02d%02d2", apDigit[0], my_hour_tmp, my_min);
   sendDataViaI2C(dispString);
-}
-
-
-void beep(bool continuous = false, int initialBeepDelay = 20) {
-  if (continuous) {
-    if (isAlarmActive) {
-      unsigned long currentTime = millis();
-      if (currentTime - lastBeepTime >= currentBeepDelay) {
-        beepState = !beepState;  // Toggle beep state
-        digitalWrite(buzzerPin, beepState ? HIGH : LOW);
-        lastBeepTime = currentTime;
-
-        // Gradually decrease the delay, but not below 300ms
-        if (beepState && currentBeepDelay > 300) {
-          currentBeepDelay -= 50;                              // Decrease the delay by 50ms each iteration
-          if (currentBeepDelay < 300) currentBeepDelay = 300;  // Cap at 300ms
-        }
-      }
-    } else {
-      digitalWrite(buzzerPin, LOW);  // Turn off beep when alarm is not active
-    }
-  } else {
-    digitalWrite(buzzerPin, HIGH);
-    delay(initialBeepDelay);
-    digitalWrite(buzzerPin, LOW);
-  }
-}
-
-
-// Function to stop the alarm completely
-int stopAlarm() {
-  Serial.println("RTC Alarm stopping....");
-  if (!isAlarmActive) return;
-  Serial.println("Alarm stopped");
-  isAlarmActive = false;
-  snoozeflag = false;
-  rtc.clearAlarm(1);                   // Clear any active alarm flags
-  sendDataRepeatedly("ALoFF0", 5000);  // Notify the display
-  beep();                              // Signal that the alarm is stopped
-  return 0;
-}
-
-// Function to snooze the alarm for 5 minutes
-int snoozeAlarm() {
-  if (!isAlarmActive) return;
-  Serial.println("Alarm snoozed for 5 minutes");
-  isAlarmActive = false;                        // Temporarily disable the alarm
-  alarmStartTime = millis() + SNOOZE_DURATION;  // Set snooze duration
-  rtc.clearAlarm(1);                            // Clear the alarm
-  sendDataRepeatedly("SnooZ0", 2000);           // Notify the display
-  beep();                                       // Signal snooze activation
-  return 0;
-}
-
-// Function to activate the alarm
-void activateAlarm() {
-  Serial.println("Alram triggred");
-  alarmTriggered = true;  // Set the flag for alarm activation
 }
 
 void checkSwitch() {
@@ -696,30 +643,7 @@ boolean readSwitchStatus() {
   return (sw1_status || sw2_status || sw3_status || sw4_status);
 }
 
-void beep(bool continuous = false, int initialBeepDelay = 20) {
-  if (continuous) {
-    if (isAlarmActive) {
-      unsigned long currentTime = millis();
-      if (currentTime - lastBeepTime >= currentBeepDelay) {
-        beepState = !beepState;  // Toggle beep state
-        digitalWrite(buzzerPin, beepState ? HIGH : LOW);
-        lastBeepTime = currentTime;
 
-        // Gradually decrease the delay, but not below 300ms
-        if (beepState && currentBeepDelay > 300) {
-          currentBeepDelay -= 50;                              // Decrease the delay by 50ms each iteration
-          if (currentBeepDelay < 300) currentBeepDelay = 300;  // Cap at 300ms
-        }
-      }
-    } else {
-      digitalWrite(buzzerPin, LOW);  // Turn off beep when alarm is not active
-    }
-  } else {
-    digitalWrite(buzzerPin, HIGH);
-    delay(initialBeepDelay);
-    digitalWrite(buzzerPin, LOW);
-  }
-}
 
 
 // Function to stop the alarm completely
@@ -745,12 +669,6 @@ int snoozeAlarm() {
   sendDataRepeatedly("SnooZ0", 2000);           // Notify the display
   beep();                                       // Signal snooze activation
   return 0;
-}
-
-// Function to activate the alarm
-void activateAlarm() {
-  Serial.println("Alram triggred");
-  alarmTriggered = true;  // Set the flag for alarm activation
 }
 
 void setup() {
