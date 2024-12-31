@@ -6,10 +6,10 @@
 #include <stdint.h>
 #include <Arduino.h>
 #include <AceButton.h>
-
 #include "RTClib.h"
-#define SNOOZE_DURATION 300000  // Snooze duration in milliseconds (e.g., 5 minutes)
 
+#define SNOOZE_DURATION 300000  // Snooze duration in milliseconds (e.g., 5 minutes)
+const unsigned long ALARM_DURATION = 15UL * 60 * 1000; // 15 minutes in milliseconds
 // Pin Definitions
 #define SEGMENT_MASK 0b11111100   // Mask for segments a-f on PORTD (Pins 2-7)
 #define ANODE_MASK 0b00111100     // Mask for anodes on PORTB (Pins 10-13 as PB2-PB5)
@@ -107,7 +107,7 @@ void handleEvent(AceButton *button, uint8_t eventType,
     case AceButton::kEventPressed:
       {
         uint8_t pin = button->getPin();
-        digitalWrite(buzzerPin, HIGH);
+        // digitalWrite(buzzerPin, HIGH);
         switch (pin) {
           case 1:
             {
@@ -134,7 +134,7 @@ void handleEvent(AceButton *button, uint8_t eventType,
       }
     case AceButton::kEventReleased:
       {
-        digitalWrite(buzzerPin, LOW);
+        // digitalWrite(buzzerPin, LOW);
         sw1_status = 0, sw2_status = 0, sw3_status = 0, sw4_status = 0;
         break;
       }
@@ -193,21 +193,21 @@ void clearAll() {
 }
 
 // Function to send data via I2C
-void sendDataViaI2C(const char *data) {
-  if (strlen(data) != 6) {
-    Serial.println("Error: Data must be exactly 6 characters long.");
-    Serial.println(data);
-    return;
-  }
-  strncpy(buf, data, 6);  // Copy the data to the buffer
-  buf[6] = '\0';  // Ensure the buffer is null-terminated
-}
+// void sendDataViaI2C(const char *data) {
+//   if (strlen(data) != 6) {
+//     Serial.println("Error: Data must be exactly 6 characters long.");
+//     Serial.println(data);
+//     return;
+//   }
+//   memcpy((void*)buf, data, 6); // Copy the data to the buffer
+//   buf[6] = '\0';  // Ensure the buffer is null-terminated
+// }
 
 // Function to send data repeatedly for a specified duration
 void sendDataRepeatedly(const char *data, unsigned int timeFrame = 5000) {
   long startTime = millis();
   while ((millis() - startTime) <= timeFrame) {
-    sendDataViaI2C(data);
+    memcpy((char*)buf, data, 6);
     delay(1);
   }
 }
@@ -329,14 +329,16 @@ int updateGlobalTimeVars() {
 }
 
 // Function to display the current date
-void displayDate() {
-  char dateString[6];
-  sprintf(dateString, "d%02d%02d1", my_date, my_month);
-  sendDataRepeatedly(dateString);
+int displayDate() {
+  // char dateString[6];
+  sprintf((char*)buf, "d%02d%02d1", my_date, my_month);
+  //sendDataRepeatedly(dateString);
 
-  char yearString[6];
-  sprintf(yearString, "Y%04d0", my_year);
-  sendDataRepeatedly(yearString);
+  // char yearString[6];
+  sprintf((char*)buf, "Y%04d0", my_year);
+
+  return 0;
+  //sendDataRepeatedly(yearString);
 }
 
 // Function to display the alarm time
@@ -363,13 +365,14 @@ void getTime() {
   uint8_t my_hour_tmp = (my_hour == 0) ? 12 : (my_hour > 12) ? my_hour - 12
                                                              : my_hour;
 
-  char dispString[7];  // Increase size to 7
-  snprintf(dispString, sizeof(dispString), "%c%02d%02d2", apDigit[0], my_hour_tmp, my_min);
-  sendDataViaI2C(dispString);
+  // char dispString[7];  // Increase size to 7
+  snprintf((char*)buf, sizeof(buf), "%c%02d%02d2", apDigit[0], my_hour_tmp, my_min);
+  // sendDataViaI2C(dispString);
 }
 
-void checkSwitch() {
+int checkSwitch() {
   switch_status = readSwitchStatus();
+  Serial.println(F("EnteredCheck Switch"));
   if (switch_status) {
     if (sw1_status) {
       beep();
@@ -386,7 +389,8 @@ void checkSwitch() {
       beep();
       displayAlarm();
     }
-  }
+  } else return 0;
+  return 0;
 }
 
 // Function to display the menu
@@ -465,9 +469,9 @@ int sendUpdatedTimeOrAlaramToDisplay(uint8_t my_hour, uint8_t my_min) {
   uint8_t my_hour_tmp = (my_hour == 0) ? 12 : (my_hour > 12) ? my_hour - 12
                                                              : my_hour;
   const char *apDigit = (my_hour > 12 && my_min > 0) ? "P" : "A";
-  char dispString[7];
-  snprintf(dispString, sizeof(dispString), "%c%02d%02d1", apDigit[0], my_hour_tmp, my_min);
-  sendDataViaI2C(dispString);
+  // char dispString[7];
+  snprintf((char*)buf, sizeof(buf), "%c%02d%02d1", apDigit[0], my_hour_tmp, my_min);
+  // sendDataViaI2C(dispString);
   return 0;
 }
 
@@ -516,9 +520,9 @@ int setDate() {
 }
 
 int sendUpdatedDateToDisplay(uint8_t my_date, uint8_t my_month) {
-  char dateString[7];
-  sprintf(dateString, "d%02d%02d1", my_date, my_month);
-  sendDataViaI2C(dateString);
+  // char dateString[7];
+  sprintf((char*)buf, "d%02d%02d1", my_date, my_month);
+  // sendDataViaI2C(dateString);
   return 0;
 }
 
@@ -578,9 +582,9 @@ int setYear() {
 }
 
 int setUpdatedYearToDisplay(uint16_t my_year) {
-  char yearString[6];
-  sprintf(yearString, "Y%04d0", my_year);
-  sendDataViaI2C(yearString);
+  //char yearString[6];
+  sprintf((char*)buf, "Y%04d0", my_year);
+  //sendDataViaI2C(yearString);
   return 0;
 }
 
@@ -649,7 +653,7 @@ boolean readSwitchStatus() {
 // Function to stop the alarm completely
 int stopAlarm() {
   Serial.println("RTC Alarm stopping....");
-  if (!isAlarmActive) return;
+  if (!isAlarmActive) return 0;
   Serial.println("Alarm stopped");
   isAlarmActive = false;
   snoozeflag = false;
@@ -661,7 +665,7 @@ int stopAlarm() {
 
 // Function to snooze the alarm for 5 minutes
 int snoozeAlarm() {
-  if (!isAlarmActive) return;
+  if (!isAlarmActive) return 0;
   Serial.println("Alarm snoozed for 5 minutes");
   isAlarmActive = false;                        // Temporarily disable the alarm
   alarmStartTime = millis() + SNOOZE_DURATION;  // Set snooze duration
@@ -719,17 +723,15 @@ void loop() {
 
 
 
-  if (rtc.alarmFired(1)) {  // Check if the alarm is triggered
+  if (rtc.alarmFired(1) == true) {  // Check if the alarm is triggered
     Serial.println(F("RTC Alarm triggered"));
     isAlarmActive = true;
     alarmStartTime = millis();  // Record the alarm start time
     currentBeepDelay = 20;      // Reset beep delay
-  } else {
-    Serial.println(F("False interrupt detected"));
   }
 
   // Handle active alarm
-  if (isAlarmActive) {
+  if (isAlarmActive == true) {
     rtc.clearAlarm(1);  // Clear the alarm
 
     // Check switch inputs
@@ -746,7 +748,7 @@ void loop() {
     }
 
     // Check if 15 minutes have elapsed since the alarm started
-    if (millis() - alarmStartTime >= 15 * 60 * 1000) {
+    if (millis() - alarmStartTime >= ALARM_DURATION) {
       Serial.println(F("Alarm auto-stopped after 15 minutes"));
       stopAlarm();
       return;
