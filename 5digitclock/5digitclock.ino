@@ -3,12 +3,18 @@
  * using a resistor ladder.
  */
 #include <Wire.h>
-#include <stdint.h>
 #include <Arduino.h>
 #include <AceButton.h>
 #include "RTClib.h"
 // #include <TimerOne.h>
+/*
 
+itoa(my_date, buf, 10);
+strcat(buf, itoa(my_month, buf + strlen(buf), 10));
+strcat(buf, "1");
+
+
+*/
 #define SNOOZE_DURATION 300000                          // Snooze duration in milliseconds (e.g., 5 minutes)
 const unsigned long ALARM_DURATION = 15UL * 60 * 1000;  // 15 minutes in milliseconds
 // Pin Definitions
@@ -232,10 +238,6 @@ void sendDataRepeatedly(const char *data, unsigned int timeFrame = 5000) {
   // Check if data is not empty
   if (data != nullptr && strlen(data) > 0) {
     memcpy((char *)buf, data, 6);
-  } else {
-    // If data is empty, display the contents of buf
-    Serial.print("Buffer contents: ");
-    Serial.println((char *)buf);
   }
   while ((millis() - startTime) <= timeFrame) {
     delay(1);
@@ -269,9 +271,10 @@ uint8_t getSegmentPattern(char character) {
     case 'L': return 0b00111000;
     case 'I': return 0b00001110;
     case 'o': return 0b01100011;
+    case 'O': return 0b01011100;
     case 'Y': return 0b01110010;
     case 'H': return 0b01110110;
-    case 'F': return 0b01111001;
+    case 'F': return 0b01110001;
     case 'e': return 0b01111011;
     case '=': return 0b00000000;  // Blank
     default: return 0b00000000;   // Blank
@@ -353,7 +356,6 @@ int updateGlobalTimeVars() {
 // Function to display the current date
 int displayDate() {
   updateGlobalTimeVars();
-  Serial.println(F("In date"));
   // char dateString[6];
   sprintf((char *)buf, "d%02d%02d1", my_date, my_month);
   sendDataRepeatedly((char *)buf);
@@ -377,7 +379,7 @@ bool isAlarm1Set() {
 
 void displayAlarm() {
   if (!isAlarm1Set()) {
-    sendDataRepeatedly("ALoFF0", 2000);
+    sendDataRepeatedly("ALOFF0", 2000);
   } else {
     char apDigit = (alarm_hour >= 12) ? 'P' : 'A';
     uint8_t alarm_hour_tmp = (alarm_hour == 0) ? 12 : (alarm_hour > 12) ? alarm_hour - 12
@@ -400,31 +402,6 @@ void getTime() {
                                                              : my_hour;
   snprintf((char *)buf, sizeof(buf), "%c%02d%02d2", apDigit[0], my_hour_tmp, my_min);
 }
-
-
-
-// int checkSwitch() {
-//   switch_status = readSwitchStatus();
-//   Serial.println(F("EnteredCheck Switch"));
-//   if (switch_status) {
-//     if (sw1_status) {
-//       beep();
-//       delay(300);
-//       displayMenu();  // go to menu if switch one is pressed
-//       delay(200);
-//     } else if (sw2_status) {
-//       beep();
-//       displayDate();  // display date if switch 2 is pressed
-//     } else if (sw3_status) {
-//       beep();
-//       displayTemperature();  // display tempreature if switch 3 is pressed
-//     } else if (sw4_status) {
-//       beep();
-//       displayAlarm();
-//     }
-//   } else return 0;
-//   return 0;
-// }
 
 // Function to display the menu
 uint8_t displayMenu() {
@@ -498,7 +475,7 @@ uint8_t setAlarm() {
         alarm_changed_status = 0;
         sendUpdatedTimeOrAlaramToDisplay(alarm_hour, alarm_min);
       } else {
-        sendDataRepeatedly("ALoFF0", 2000);
+        sendDataRepeatedly("ALOFF0", 2000);
         rtc.clearAlarm(1);
         rtc.disableAlarm(1);
       }
@@ -688,7 +665,6 @@ uint8_t setUpdatedYearToDisplay(uint16_t my_year) {
 //Function to read the status of each switch with debounce
 boolean readSwitchStatus() {
   checkButtons();
-  Serial.println("SwitchStats");
   // Return true if any switch is active
   return (sw1_status || sw2_status || sw3_status || sw4_status);
 }
@@ -704,7 +680,7 @@ uint8_t stopAlarm() {
   isAlarmActive = false;
   snoozeflag = false;
   rtc.clearAlarm(1);                   // Clear any active alarm flags
-  sendDataRepeatedly("ALoFF0", 5000);  // Notify the display
+  sendDataRepeatedly("ALOFF0", 5000);  // Notify the display
   beep();                              // Signal that the alarm is stopped
   return 0;
 }
