@@ -7,17 +7,9 @@
 #include <string.h>
 #include <AceButton.h>
 #include "RTClib.h"
-// #include <TimerOne.h>
-/*
 
-itoa(my_date, buf, 10);
-strcat(buf, itoa(my_month, buf + strlen(buf), 10));
-strcat(buf, "1");
-
-
-*/
 #define SNOOZE_DURATION 300000                          // Snooze duration in milliseconds (e.g., 5 minutes)
-const unsigned long ALARM_DURATION = 15UL * 60 * 1000;  // 15 minutes in milliseconds
+const unsigned long ALARM_DURATION = 20UL * 60 * 1000;  // 20 minutes in milliseconds
 // Pin Definitions
 #define SEGMENT_MASK 0b11111100   // Mask for segments a-f on PORTD (Pins 2-7)
 #define ANODE_MASK 0b00111100     // Mask for anodes on PORTB (Pins 10-13 as PB2-PB5)
@@ -33,12 +25,7 @@ using ace_button::AceButton;
 using ace_button::ButtonConfig;
 using ace_button::LadderButtonConfig;
 volatile boolean sw1_status = 0, sw2_status = 0, sw3_status = 0, sw4_status = 0;
-boolean switch_status = 0;
 volatile boolean isMenuActive = 0;
-volatile boolean isSetTimeActive = 0;
-volatile boolean isSetDateActive = 0;
-volatile boolean isSetAlaramActive = 0;
-volatile boolean isSetYearActive = 0;
 
 uint8_t buzzerPin = A1;
 uint8_t alramTriggerPin = A3;
@@ -51,13 +38,9 @@ volatile unsigned long alarmStartTime = 0;  // When the alram started from
 volatile boolean alarmTriggered = false;    // New flag for alarm activation
 volatile boolean snoozeflag = 0;
 
-const uint8_t sw1 = 4, sw2 = 5, sw3 = 6, sw4 = 7;
-// Debounce Configuration
-const uint8_t debounceDelay = 50;                                 // Debounce time in milliseconds
-unsigned long lastDebounceTime[5] = { 0, 0, 0, 0, 0 };            // Tracks debounce time for each switch
-bool lastSwitchState[5] = { false, false, false, false, false };  // Last stable state for each switch
+
 uint16_t my_year = 0;
-uint8_t my_month = 0, my_date = 0, my_hour = 0, my_min = 0, my_sec = 0, alarm_hour = 0, alarm_min = 0;
+uint8_t my_month = 0, my_date = 0, my_hour = 0, my_min = 0, alarm_hour = 0, alarm_min = 0;
 
 unsigned long lastBeepTime = 0;
 uint16_t currentBeepDelay = 1500;
@@ -119,22 +102,22 @@ void handleEvent(AceButton *button, uint8_t eventType, uint8_t /*buttonState*/) 
         switch (pin) {
           case 1:
             sw1_status = 1;
-            if (isMenuActive == 0) {
+            if (isMenuActive == 0 && isAlarmActive == 0) {
               isMenuActive = 1;
               displayMenu();
             }
             break;
           case 2:
             sw2_status = 1;
-            if (isMenuActive == 0) displayDate();
+            if (isMenuActive == 0 && isAlarmActive == 0) displayDate();
             break;
           case 3:
             sw3_status = 1;
-            if (isMenuActive == 0) displayTemperature();
+            if (isMenuActive == 0 && isAlarmActive == 0) displayTemperature();
             break;
           case 4:
             sw4_status = 1;
-            if (isMenuActive == 0) displayAlarm();
+            if (isMenuActive == 0 && isAlarmActive == 0) displayAlarm();
             break;
         }
         break;
@@ -176,7 +159,6 @@ void checkButtons() {
       switch (pin) {
         case 1:
           sw1_status = isPressed ? 1 : 0;
-
           break;
         case 2:
           sw2_status = isPressed ? 1 : 0;
@@ -202,23 +184,22 @@ void checkButtons() {
 
 //-----------------------------------------------------------------------------
 
-void beep(bool continuous = false, uint8_t initialBeepDelay = 20) {
-  if (continuous) {
-    if (isAlarmActive) {
-      unsigned long currentTime = millis();
-      if (currentTime - lastBeepTime >= currentBeepDelay) {
-        beepState = !beepState;  // Toggle beep state
-        digitalWrite(buzzerPin, beepState ? HIGH : LOW);
-        lastBeepTime = currentTime;
-
-        // Gradually decrease the delay, but not below 300ms
-        if (beepState && currentBeepDelay > 300) {
-          currentBeepDelay -= 50;                              // Decrease the delay by 50ms each iteration
-          if (currentBeepDelay < 300) currentBeepDelay = 300;  // Cap at 300ms
-        }
+void beep(uint8_t initialBeepDelay = 20) {
+  if (initialBeepDelay == 0) {
+    digitalWrite(buzzerPin, LOW);  // No beep sound
+    return;
+  }
+  if (isAlarmActive) {
+    unsigned long currentTime = millis();
+    if (currentTime - lastBeepTime >= currentBeepDelay) {
+      beepState = !beepState;  // Toggle beep state
+      digitalWrite(buzzerPin, beepState ? HIGH : LOW);
+      lastBeepTime = currentTime;
+      // Gradually decrease the delay, but not below 300ms
+      if (beepState && currentBeepDelay > 300) {
+        currentBeepDelay -= 50;                              // Decrease the delay by 50ms each iteration
+        if (currentBeepDelay < 300) currentBeepDelay = 300;  // Cap at 300ms
       }
-    } else {
-      digitalWrite(buzzerPin, LOW);  // Turn off beep when alarm is not active
     }
   } else {
     digitalWrite(buzzerPin, HIGH);
@@ -226,6 +207,30 @@ void beep(bool continuous = false, uint8_t initialBeepDelay = 20) {
     digitalWrite(buzzerPin, LOW);
   }
 }
+// void beep(bool continuous = false, uint8_t initialBeepDelay = 20) {
+//   if (continuous) {
+//     if (isAlarmActive) {
+//       unsigned long currentTime = millis();
+//       if (currentTime - lastBeepTime >= currentBeepDelay) {
+//         beepState = !beepState;  // Toggle beep state
+//         digitalWrite(buzzerPin, beepState ? HIGH : LOW);
+//         lastBeepTime = currentTime;
+
+//         // Gradually decrease the delay, but not below 300ms
+//         if (beepState && currentBeepDelay > 300) {
+//           currentBeepDelay -= 50;                              // Decrease the delay by 50ms each iteration
+//           if (currentBeepDelay < 300) currentBeepDelay = 300;  // Cap at 300ms
+//         }
+//       }
+//     } else {
+//       digitalWrite(buzzerPin, LOW);  // Turn off beep when alarm is not active
+//     }
+//   } else {
+//     digitalWrite(buzzerPin, HIGH);
+//     delay(initialBeepDelay);
+//     digitalWrite(buzzerPin, LOW);
+//   }
+// }
 // Clear all segments and anodes
 void clearAll() {
   PORTD &= ~SEGMENT_MASK;  // Clear segments (a-f)
@@ -236,8 +241,6 @@ void clearAll() {
 // Function to send data repeatedly for a specified duration
 void sendDataRepeatedly(const char *data, uint16_t timeFrame = 5000) {
   long startTime = millis();
-  
-  Serial.println(data);
   // Check if data is not empty
   if (data != nullptr && strlen(data) > 0) {
     memcpy((char *)buf, data, 6);
@@ -346,7 +349,6 @@ uint8_t updateGlobalTimeVars() {
   DateTime now = rtc.now();
   my_hour = now.hour();
   my_min = now.minute();
-  my_sec = now.second();
   my_date = now.day();
   my_month = now.month();
   my_year = now.year();
@@ -358,10 +360,11 @@ uint8_t updateGlobalTimeVars() {
 
 // Function to display the current date
 uint8_t displayDate() {
+  beep();
   updateGlobalTimeVars();
   sprintf((char *)buf, "d%02d%02d1", my_date, my_month);
   sendDataRepeatedly((char *)buf);
-
+  beep();
   // char yearString[6];
   sprintf((char *)buf, "Y%04d0", my_year);
   sendDataRepeatedly((char *)buf);
@@ -380,6 +383,7 @@ bool isAlarm1Set() {
 }
 
 void displayAlarm() {
+  beep();
   if (!isAlarm1Set()) {
     sendDataRepeatedly("ALOFF0", 2000);
   } else {
@@ -392,6 +396,7 @@ void displayAlarm() {
 }
 
 void displayTemperature() {
+  beep();
   int tempInt = static_cast<int>(rtc.getTemperature() * 100);
   snprintf((char *)buf, sizeof(buf), "t%04d1", tempInt);
   sendDataRepeatedly((char *)buf);
@@ -408,10 +413,9 @@ void getTime() {
 // Function to display the menu
 uint8_t displayMenu() {
   beep();
-  Serial.println("Entered menu");
   sendDataRepeatedly("Enu==1", 2000);
   delay(100);
-
+  checkButtons();
   // Display an animation when entered into menu
   while (!readSwitchStatus()) {
     DateTime now = rtc.now();
@@ -439,6 +443,11 @@ uint8_t displayMenu() {
       isMenuActive = 0;
       beep();
       return 0;
+    } else {
+      // Handle other button events if needed
+      isMenuActive = 0;
+      beep();
+      return 0;
     }
   }
 }
@@ -454,12 +463,14 @@ uint8_t setAlarm() {
     readSwitchStatus();
     sendUpdatedTimeOrAlaramToDisplay(alarm_hour, alarm_min);
     if (sw2_status) {
+      beep();
       alarm_changed_status = 1;
       delay(150);
       alarm_hour++;
       if (alarm_hour > 23) alarm_hour = 0;
       sendUpdatedTimeOrAlaramToDisplay(alarm_hour, alarm_min);
     } else if (sw3_status) {
+      beep();
       alarm_changed_status = 1;
       delay(150);
       alarm_min++;
@@ -504,12 +515,14 @@ uint8_t setTime() {
     readSwitchStatus();
     sendUpdatedTimeOrAlaramToDisplay(my_hour, my_min);
     if (sw2_status) {
+      beep();
       time_changed_status = 1;
       delay(150);
       my_hour++;
       if (my_hour > 23) my_hour = 0;
       sendUpdatedTimeOrAlaramToDisplay(my_hour, my_min);
     } else if (sw3_status) {
+      beep();
       time_changed_status = 1;
       delay(150);
       my_min++;
@@ -557,12 +570,14 @@ uint8_t setDate() {
     readSwitchStatus();
     sendUpdatedDateToDisplay(my_date, my_month);
     if (sw2_status) {
+      beep();
       date_changed_status = 1;
       delay(150);
       my_date++;
       if (my_date > 31) my_date = 1;
       sendUpdatedDateToDisplay(my_date, my_month);
     } else if (sw3_status) {
+      beep();
       date_changed_status = 1;
       delay(150);
       my_month++;
@@ -603,20 +618,22 @@ uint8_t setYear() {
   updateGlobalTimeVars();
   boolean year_changed_status = 0;
   readSwitchStatus();
-  Serial.println("Year set start");
-  Serial.println(my_year);
+  // Serial.println("Year set start");
+  // Serial.println(my_year);
   setUpdatedYearToDisplay(my_year);
   beep();
   while (!sw1_status) {
     readSwitchStatus();
     setUpdatedYearToDisplay(my_year);
     if (sw2_status) {
+      beep();
       year_changed_status = 1;
       delay(150);
       my_year--;
       if (my_year < 2025) my_year = 2025;
       setUpdatedYearToDisplay(my_year);
     } else if (sw3_status) {
+      beep();
       year_changed_status = 1;
       delay(150);
       my_year++;
@@ -626,18 +643,17 @@ uint8_t setYear() {
       beep();
       setUpdatedYearToDisplay(my_year);
       if (year_changed_status) {
-        Serial.println("adter button press");
+        // Serial.println("adter button press");
+        // Serial.println(my_year);
+        // Serial.println(my_month);
+        // Serial.println(my_date);
+        // Serial.println(my_hour);
+        // Serial.println(my_min);
+        // Serial.println("****************");
 
-        Serial.println(my_year);
-        Serial.println(my_month);
-        Serial.println(my_date);
-        Serial.println(my_hour);
-        Serial.println(my_min);
-        Serial.println("****************");
-        
         uint8_t year = (my_year - 2000U) < 25U ? 25U : (my_year - 2000U);
 
-        writeOnAddress(year , 0x06);
+        writeOnAddress(year, 0x06);
         //rtc.adjust(DateTime(my_year, my_month, my_date, my_hour, my_min, 0));
         beep();
         delay(50);
@@ -659,24 +675,20 @@ uint8_t setYear() {
 }
 
 uint8_t setUpdatedYearToDisplay(uint16_t my_year) {
-  //char yearString[6];
   sprintf((char *)buf, "Y%04d0", my_year);
   loopDisplay();
-  //sendDataViaI2C(yearString);
   return 0;
 }
 
-void writeOnAddress(byte value, int address)
-{
+void writeOnAddress(byte value, int address) {
   Wire.beginTransmission(0x68);
   Wire.write(address);
   Wire.write(decToBcd(value));
   Wire.endTransmission();
 }
 
-byte decToBcd(byte val)
-{
-  return ( (val / 10 * 16) + (val % 10) );
+byte decToBcd(byte val) {
+  return ((val / 10 * 16) + (val % 10));
 }
 
 
@@ -692,24 +704,24 @@ boolean readSwitchStatus() {
 
 // Function to stop the alarm completely
 uint8_t stopAlarm() {
-  Serial.println("RTC Alarm stopping....");
+  Serial.println(F("RTC Alarm stopping...."));
   if (!isAlarmActive) return 0;
-  Serial.println("Alarm stopped");
+  Serial.println(F("Alarm stopped"));
   isAlarmActive = false;
   snoozeflag = false;
-  rtc.clearAlarm(1);                   // Clear any active alarm flags
-  sendDataRepeatedly("ALOFF0", 5000);  // Notify the display
-  beep();                              // Signal that the alarm is stopped
+  rtc.clearAlarm(1);                                                           // Clear any active alarm flags
+  rtc.setAlarm1(DateTime(0, 0, 0, alarm_hour, alarm_min, 0), DS3231_A1_Hour);  // Set Alram for next day
+  sendDataRepeatedly("ALOFF0", 5000);                                          // Notify the display
+  beep();                                                                      // Signal that the alarm is stopped
   return 0;
 }
 
 // Function to snooze the alarm for 5 minutes
 uint8_t snoozeAlarm() {
   if (!isAlarmActive) return 0;
-  Serial.println("Alarm snoozed for 5 minutes");
+  Serial.println(F("Alarm snoozed for 5 minutes"));
   isAlarmActive = false;                        // Temporarily disable the alarm
   alarmStartTime = millis() + SNOOZE_DURATION;  // Set snooze duration
-  rtc.clearAlarm(1);                            // Clear the alarm
   sendDataRepeatedly("SnOOZ0", 2000);           // Notify the display
   beep();                                       // Signal snooze activation
   return 0;
@@ -723,14 +735,8 @@ void setup() {
   // Configure PORTC (anode for digit 5) as output
   DDRC |= ANODE_5_BIT;
   Serial.begin(115200);
-  while (!Serial)
-    ;  // Wait until Serial is ready - Leonardo/Micro
   Serial.println(F("setup(): begin"));
-  // Other setup code...
 
-  // Timer1.initialize(5000);            // Set timer to call every 100ms (100000 microseconds)
-  // Timer1.attachInterrupt(displayMe);  // Attach the displayMe function to the timer interrupt
-  // Initialize built-in LED as an output, and start with LED off.
   pinMode(buzzerPin, OUTPUT);
   pinMode(alramTriggerPin, INPUT_PULLUP);
   digitalWrite(buzzerPin, LOW);
@@ -744,19 +750,17 @@ void setup() {
   buttonConfig.setEventHandler(handleEvent);
   buttonConfig.setFeature(ButtonConfig::kFeatureClick);
   if (!rtc.begin()) {
-    Serial.println("Couldn't find RTC");
+    Serial.println(F("Couldn't find RTC"));
     Serial.flush();
     abort();
   }
 
   if (rtc.lostPower()) {
-    Serial.println("RTC lost power, setting the time!");
+    Serial.println(F("RTC lost power, setting the time!"));
     // Set the RTC to the date & time this sketch was compiled
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-    // Set the RTC to the manual date & time defined above
-    // rtc.adjust(now);
   } else {
-    Serial.println("RTC is running with correct time.");
+    Serial.println(F("RTC is running with correct time."));
   }
   rtc.disable32K();
   rtc.clearAlarm(1);
@@ -769,7 +773,7 @@ void setup() {
 }
 
 void loop() {
-  int pinState = digitalRead(alramTriggerPin);
+  uint8_t pinState = digitalRead(alramTriggerPin);
   checkButtons();
   updateGlobalTimeVars();
 
@@ -789,29 +793,29 @@ void loop() {
   // Handle active alarm
   if (isAlarmActive == true) {
     rtc.clearAlarm(1);  // Clear the alarm
-
+    checkButtons();
     // Check switch inputs
-    if (digitalRead(sw4)) {
+    if (sw4_status) {
       // Stop the alarm
       Serial.println(F("RTC Alarm stopping"));
       stopAlarm();
       return;
-    } else if (digitalRead(sw1) || digitalRead(sw2) || digitalRead(sw3)) {
+    } else if (sw1_status || sw2_status || sw3_status) {
       // Snooze the alarm for 5 minutes
       snoozeflag = true;
       snoozeAlarm();
       return;
     }
 
-    // Check if 15 minutes have elapsed since the alarm started
+    // Check if 20 minutes have elapsed since the alarm started
     if (millis() - alarmStartTime >= ALARM_DURATION) {
-      Serial.println(F("Alarm auto-stopped after 15 minutes"));
+      Serial.println(F("Alarm auto-stopped after 20 minutes"));
       stopAlarm();
       return;
     }
 
     // Continue alarm sound
-    beep(true, currentBeepDelay);  // Ensure beep is non-blocking
+    beep(currentBeepDelay);  // Ensure beep is non-blocking
   }
 
   // Handle snoozed alarm
@@ -821,5 +825,6 @@ void loop() {
     alarmStartTime = millis();  // Reset the alarm start time
   }
   loopDisplay();
+  beep(isAlarmActive ? currentBeepDelay : 0);
   delay(1);
 }
