@@ -184,53 +184,86 @@ void checkButtons() {
 
 //-----------------------------------------------------------------------------
 
-void beep(uint8_t initialBeepDelay = 20) {
-  if (initialBeepDelay == 0) {
-    digitalWrite(buzzerPin, LOW);  // No beep sound
-    return;
+void beep(unsigned long beepDuration = 20) {
+  static unsigned long beepStartTime = 0;
+  static bool isBeeping = false;
+
+  unsigned long currentTime = millis();
+
+  // This handles the normal beep when the alarm is not active.
+  if (!isAlarmActive && beepDuration > 0) {
+    if (!isBeeping) {
+      // Start the beep
+      digitalWrite(buzzerPin, HIGH);
+      beepStartTime = currentTime;
+      isBeeping = true;
+    } else if (currentTime - beepStartTime >= beepDuration) {
+      // End the beep
+      digitalWrite(buzzerPin, LOW);
+      isBeeping = false;
+    }
+    return;  // Exit after handling a normal beep
   }
-  if (isAlarmActive) {
-    unsigned long currentTime = millis();
-    if (currentTime - lastBeepTime >= currentBeepDelay) {
-      beepState = !beepState;  // Toggle beep state
-      digitalWrite(buzzerPin, beepState ? HIGH : LOW);
+
+  // This handles alarm-triggered beep logic.
+  if (isAlarmActive && beepDuration > 0) {
+    if (!isBeeping) {
+      // Start the beep
+      digitalWrite(buzzerPin, HIGH);
+      delay(20);
+      beepStartTime = currentTime;
+      isBeeping = true;
+    } else if (currentTime - beepStartTime >= beepDuration) {
+      // End the beep after the specified duration
+      digitalWrite(buzzerPin, LOW);
+      isBeeping = false;
       lastBeepTime = currentTime;
       // Gradually decrease the delay, but not below 300ms
-      if (beepState && currentBeepDelay > 300) {
+      if (currentBeepDelay > 300) {
         currentBeepDelay -= 50;                              // Decrease the delay by 50ms each iteration
         if (currentBeepDelay < 300) currentBeepDelay = 300;  // Cap at 300ms
       }
     }
   } else {
-    digitalWrite(buzzerPin, HIGH);
-    delay(initialBeepDelay);
+    // Ensure buzzer is turned off if not beeping or alarm is inactive.
     digitalWrite(buzzerPin, LOW);
+    isBeeping = false;
   }
 }
-// void beep(bool continuous = false, uint8_t initialBeepDelay = 20) {
-//   if (continuous) {
-//     if (isAlarmActive) {
-//       unsigned long currentTime = millis();
-//       if (currentTime - lastBeepTime >= currentBeepDelay) {
-//         beepState = !beepState;  // Toggle beep state
-//         digitalWrite(buzzerPin, beepState ? HIGH : LOW);
-//         lastBeepTime = currentTime;
+// void beep(unsigned long beepDuration = 20) {
+//   static unsigned long beepStartTime = 0;
+//   static bool isBeeping = false;
 
-//         // Gradually decrease the delay, but not below 300ms
-//         if (beepState && currentBeepDelay > 300) {
-//           currentBeepDelay -= 50;                              // Decrease the delay by 50ms each iteration
-//           if (currentBeepDelay < 300) currentBeepDelay = 300;  // Cap at 300ms
-//         }
+//   if (beepDuration == 0) {
+//     digitalWrite(buzzerPin, LOW);  // No beep sound
+//     return;
+//   }
+
+//   if (isAlarmActive) {
+//     unsigned long currentTime = millis();
+//     if (!isBeeping) {
+//       // Start the beep
+//       digitalWrite(buzzerPin, HIGH);
+//       beepStartTime = currentTime;
+//       isBeeping = true;
+//     } else if (currentTime - beepStartTime >= beepDuration) {
+//       // End the beep after the specified duration
+//       digitalWrite(buzzerPin, LOW);
+//       isBeeping = false;
+//       lastBeepTime = currentTime;
+//       // Gradually decrease the delay, but not below 300ms
+//       if (currentBeepDelay > 300) {
+//         currentBeepDelay -= 50;  // Decrease the delay by 50ms each iteration
+//         if (currentBeepDelay < 300) currentBeepDelay = 300;  // Cap at 300ms
 //       }
-//     } else {
-//       digitalWrite(buzzerPin, LOW);  // Turn off beep when alarm is not active
 //     }
 //   } else {
 //     digitalWrite(buzzerPin, HIGH);
-//     delay(initialBeepDelay);
+//     delay(beepDuration);
 //     digitalWrite(buzzerPin, LOW);
 //   }
 // }
+
 // Clear all segments and anodes
 void clearAll() {
   PORTD &= ~SEGMENT_MASK;  // Clear segments (a-f)
@@ -699,9 +732,6 @@ boolean readSwitchStatus() {
   return (sw1_status || sw2_status || sw3_status || sw4_status);
 }
 
-
-
-
 // Function to stop the alarm completely
 uint8_t stopAlarm() {
   Serial.println(F("RTC Alarm stopping...."));
@@ -776,55 +806,44 @@ void loop() {
   uint8_t pinState = digitalRead(alramTriggerPin);
   checkButtons();
   updateGlobalTimeVars();
-
   getTime();
 
-
   if (pinState == LOW) {
-    if (rtc.alarmFired(1) == true) {  // Check if the alarm is triggered
+    if (rtc.alarmFired(1)) {  // Corrected the repeated check == true
       Serial.println(F("RTC Alarm triggered"));
+      rtc.clearAlarm(1);
       isAlarmActive = true;
-      alarmStartTime = millis();  // Record the alarm start time
-      currentBeepDelay = 20;      // Reset beep delay
+      alarmStartTime = millis();
+      currentBeepDelay = 1500U;
     }
   }
 
-
-  // Handle active alarm
-  if (isAlarmActive == true) {
-    rtc.clearAlarm(1);  // Clear the alarm
+  if (isAlarmActive) {
     checkButtons();
-    // Check switch inputs
     if (sw4_status) {
-      // Stop the alarm
       Serial.println(F("RTC Alarm stopping"));
       stopAlarm();
       return;
     } else if (sw1_status || sw2_status || sw3_status) {
-      // Snooze the alarm for 5 minutes
       snoozeflag = true;
       snoozeAlarm();
       return;
     }
 
-    // Check if 20 minutes have elapsed since the alarm started
     if (millis() - alarmStartTime >= ALARM_DURATION) {
       Serial.println(F("Alarm auto-stopped after 20 minutes"));
       stopAlarm();
       return;
     }
-
-    // Continue alarm sound
-    beep(currentBeepDelay);  // Ensure beep is non-blocking
   }
 
-  // Handle snoozed alarm
-  if (!isAlarmActive && snoozeflag && millis() >= alarmStartTime) {
+  if (!isAlarmActive && snoozeflag && millis() - alarmStartTime >= 300000) {  // Assuming 5 minutes snooze
     Serial.println(F("Snoozed alarm reactivated"));
     isAlarmActive = true;
-    alarmStartTime = millis();  // Reset the alarm start time
+    alarmStartTime = millis();
   }
+
   loopDisplay();
-  beep(isAlarmActive ? currentBeepDelay : 0);
-  delay(1);
+  beep(isAlarmActive ? currentBeepDelay : 0);  // Adjusted logic to ensure smooth operation even when alarm is not active
+  delay(1);                                    // Keep this minimal to ensure loop responsiveness
 }
