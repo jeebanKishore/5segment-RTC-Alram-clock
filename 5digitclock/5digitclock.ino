@@ -2,8 +2,9 @@
  * A demo of LadderButtonConfig for buttons connected to a single pin
  * using a resistor ladder.
  */
-#include <Wire.h>
 #include <Arduino.h>
+#include <Wire.h>
+#include <string.h>
 #include <AceButton.h>
 #include "RTClib.h"
 // #include <TimerOne.h>
@@ -233,8 +234,10 @@ void clearAll() {
 }
 
 // Function to send data repeatedly for a specified duration
-void sendDataRepeatedly(const char *data, unsigned int timeFrame = 5000) {
+void sendDataRepeatedly(const char *data, uint16_t timeFrame = 5000) {
   long startTime = millis();
+  
+  Serial.println(data);
   // Check if data is not empty
   if (data != nullptr && strlen(data) > 0) {
     memcpy((char *)buf, data, 6);
@@ -306,7 +309,7 @@ void loopDisplay() {
   char displayData[6] = { 0 };
 
   // Copy the first 5 characters from the buffer
-  strncpy(displayData, (const char *)buf, 5);
+  memcpy(displayData, (const char *)buf, 5);
   displayData[5] = '\0';  // Ensure null-termination
 
   unsigned long currentMillis = millis();
@@ -339,7 +342,7 @@ void loopDisplay() {
 }
 
 // Updaate Gloal time details
-int updateGlobalTimeVars() {
+uint8_t updateGlobalTimeVars() {
   DateTime now = rtc.now();
   my_hour = now.hour();
   my_min = now.minute();
@@ -354,9 +357,8 @@ int updateGlobalTimeVars() {
 }
 
 // Function to display the current date
-int displayDate() {
+uint8_t displayDate() {
   updateGlobalTimeVars();
-  // char dateString[6];
   sprintf((char *)buf, "d%02d%02d1", my_date, my_month);
   sendDataRepeatedly((char *)buf);
 
@@ -547,7 +549,7 @@ uint8_t sendUpdatedTimeOrAlaramToDisplay(uint8_t my_hour, uint8_t my_min) {
 uint8_t setDate() {
   sendDataRepeatedly("5tdtE0", 5000);
   updateGlobalTimeVars();
-  boolean date_changed_status = 0;  
+  boolean date_changed_status = 0;
   readSwitchStatus();
   sendUpdatedDateToDisplay(my_date, my_month);
   beep();
@@ -591,7 +593,7 @@ uint8_t setDate() {
 uint8_t sendUpdatedDateToDisplay(uint8_t my_date, uint8_t my_month) {
   sprintf((char *)buf, "d%02d%02d1", my_date, my_month);
   loopDisplay();
-  
+
   return 0;
 }
 
@@ -612,7 +614,7 @@ uint8_t setYear() {
       year_changed_status = 1;
       delay(150);
       my_year--;
-      if (my_year < 2000) my_year = 2000;
+      if (my_year < 2025) my_year = 2025;
       setUpdatedYearToDisplay(my_year);
     } else if (sw3_status) {
       year_changed_status = 1;
@@ -632,7 +634,11 @@ uint8_t setYear() {
         Serial.println(my_hour);
         Serial.println(my_min);
         Serial.println("****************");
-        rtc.adjust(DateTime(my_year, my_month, my_date, my_hour, my_min, 0));
+        
+        uint8_t year = (my_year - 2000U) < 25U ? 25U : (my_year - 2000U);
+
+        writeOnAddress(year , 0x06);
+        //rtc.adjust(DateTime(my_year, my_month, my_date, my_hour, my_min, 0));
         beep();
         delay(50);
 
@@ -660,6 +666,18 @@ uint8_t setUpdatedYearToDisplay(uint16_t my_year) {
   return 0;
 }
 
+void writeOnAddress(byte value, int address)
+{
+  Wire.beginTransmission(0x68);
+  Wire.write(address);
+  Wire.write(decToBcd(value));
+  Wire.endTransmission();
+}
+
+byte decToBcd(byte val)
+{
+  return ( (val / 10 * 16) + (val % 10) );
+}
 
 
 //Function to read the status of each switch with debounce
@@ -692,13 +710,12 @@ uint8_t snoozeAlarm() {
   isAlarmActive = false;                        // Temporarily disable the alarm
   alarmStartTime = millis() + SNOOZE_DURATION;  // Set snooze duration
   rtc.clearAlarm(1);                            // Clear the alarm
-  sendDataRepeatedly("SnooZ0", 2000);           // Notify the display
+  sendDataRepeatedly("SnOOZ0", 2000);           // Notify the display
   beep();                                       // Signal snooze activation
   return 0;
 }
 
 void setup() {
-  delay(1000);  // some microcontrollers reboot twice
   // Configure PORTD (segments a-f) as output
   DDRD |= SEGMENT_MASK;
   // Configure PORTB (segments g, DP, and anodes) as output
@@ -730,6 +747,16 @@ void setup() {
     Serial.println("Couldn't find RTC");
     Serial.flush();
     abort();
+  }
+
+  if (rtc.lostPower()) {
+    Serial.println("RTC lost power, setting the time!");
+    // Set the RTC to the date & time this sketch was compiled
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // Set the RTC to the manual date & time defined above
+    // rtc.adjust(now);
+  } else {
+    Serial.println("RTC is running with correct time.");
   }
   rtc.disable32K();
   rtc.clearAlarm(1);
